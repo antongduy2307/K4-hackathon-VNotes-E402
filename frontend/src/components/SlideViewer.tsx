@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   BookOpenCheck,
@@ -51,6 +51,27 @@ export function SlideViewer({
     [course.pages, currentPage]
   );
 
+  // Dấu thời gian của lần chuyển trang gần nhất, dùng để debounce/throttle thao tác lăn chuột
+  const lastWheelNavRef = useRef(0);
+  const WHEEL_NAV_COOLDOWN_MS = 550;
+  const WHEEL_NAV_THRESHOLD = 12;
+
+  // Lăn chuột trong khung Slide sẽ chuyển sang trang kế tiếp/trước đó (kiểu Snapping Page),
+  // đồng thời vẫn giữ nguyên các nút điều khiển Prev/Next/Zoom truyền thống bên trên.
+  function handleSlideWheel(e: React.WheelEvent<HTMLDivElement>) {
+    if (Math.abs(e.deltaY) < WHEEL_NAV_THRESHOLD) return;
+
+    const now = Date.now();
+    if (now - lastWheelNavRef.current < WHEEL_NAV_COOLDOWN_MS) return;
+    lastWheelNavRef.current = now;
+
+    if (e.deltaY > 0) {
+      onPageChange(Math.min(course.totalPages, currentPage + 1));
+    } else {
+      onPageChange(Math.max(1, currentPage - 1));
+    }
+  }
+
   function handleExtractFlashcardClick() {
     setFlashcardState("generating");
     // Cho hiệu ứng xoay lật chạy một nhịp trước khi trả kết quả, mô phỏng quá trình AI "suy nghĩ"
@@ -64,7 +85,7 @@ export function SlideViewer({
   const flashcardBack = slide.bullets[0] ?? slide.extractedText.slice(0, 100);
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 bg-slate-50/50 dark:bg-slate-950">
+    <div className="w-full h-full flex flex-col min-h-0 bg-slate-50/50 dark:bg-slate-950">
       {/* Thanh điều hướng trang trên cùng */}
       <div className="h-12 flex items-center justify-between px-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 gap-3">
         <div className="flex items-center gap-2 shrink-0">
@@ -163,7 +184,9 @@ export function SlideViewer({
         {/* pageKey đổi mỗi khi sang trang -> remount PageTransition -> tự phát lại hiệu ứng Skeleton + chuyển trang */}
         <PageTransition pageKey={slide.page}>
           <div
-            className="max-w-3xl mx-auto origin-top rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm p-8 min-h-[300px]"
+            onWheel={handleSlideWheel}
+            title="Lăn chuột để chuyển trang"
+            className="max-w-3xl mx-auto origin-top rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm hover:shadow-md transition-shadow p-8 min-h-[300px]"
             style={{ transform: `scale(${zoom / 100})` }}
           >
             <p className="text-xs text-indigo-500 dark:text-indigo-400 font-medium mb-2">

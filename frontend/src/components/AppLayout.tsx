@@ -1,10 +1,12 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { Group, Panel } from "react-resizable-panels";
 import { Header } from "@/components/Header";
 import { LeftSidebar } from "@/components/LeftSidebar";
 import { SlideViewer } from "@/components/SlideViewer";
 import { RightChatbot } from "@/components/RightChatbot";
+import { ResizeHandle } from "@/components/ResizeHandle";
 import { askChat, fetchSummary, uploadDocument } from "@/lib/api";
 import {
   mockChatHistory,
@@ -153,43 +155,69 @@ export function AppLayout() {
         }}
       />
 
-      <div className="flex flex-1 min-h-0">
-        <LeftSidebar
-          fileName={course.fileName}
-          totalLessons={mockContentTree.length}
-          reviewStats={mockReviewStats}
-          contentTree={mockContentTree}
-          activeNodeId={activeNodeId}
-          onSelectNode={setActiveNodeId}
-          notes={notes}
-          flashcards={flashcards}
-          onExportNotes={() => download("notes.json", JSON.stringify(notes, null, 2))}
-          onExportFlashcards={() =>
-            download("flashcards.json", JSON.stringify(flashcards, null, 2))
-          }
-        />
+      {/* Khung 3 cột co giãn: kéo thanh phân cách để đổi chiều rộng cột trái/phải,
+          cột giữa (SlideViewer) tự động lấp đầy phần không gian còn lại. */}
+      <Group orientation="horizontal" className="flex-1 min-h-0">
+        <Panel
+          id="left-panel"
+          defaultSize={320}
+          minSize={200}
+          maxSize={450}
+          collapsible
+          className="border-r border-slate-200 dark:border-slate-800"
+        >
+          <LeftSidebar
+            fileName={course.fileName}
+            totalLessons={mockContentTree.length}
+            reviewStats={mockReviewStats}
+            contentTree={mockContentTree}
+            activeNodeId={activeNodeId}
+            onSelectNode={setActiveNodeId}
+            notes={notes}
+            flashcards={flashcards}
+            onExportNotes={() => download("notes.json", JSON.stringify(notes, null, 2))}
+            onExportFlashcards={() =>
+              download("flashcards.json", JSON.stringify(flashcards, null, 2))
+            }
+          />
+        </Panel>
 
-        <SlideViewer
-          course={course}
-          currentPage={currentPage}
-          onPageChange={setCurrentPage}
-          quickNote={quickNote}
-          onQuickNoteChange={handleSaveQuickNote}
-          onSummarizeSlide={handleSummarizeSlide}
-          onExtractFlashcard={handleExtractFlashcard}
-          onAskAboutSlide={handleAskAboutSlide}
-          isGenerating={isGenerating || isUploading}
-        />
+        <ResizeHandle />
 
-        <RightChatbot
-          agentStatus={{ mode: "RAG thật", model: "gpt-4o-mini", online: true }}
-          messages={messages}
-          onSendMessage={handleSendMessage}
-          isGenerating={isGenerating}
-          onSummarizeConversation={handleSummarizeConversation}
-          insight={insight}
-        />
-      </div>
+        <Panel id="main-panel" minSize={360}>
+          <SlideViewer
+            course={course}
+            currentPage={currentPage}
+            onPageChange={setCurrentPage}
+            quickNote={quickNote}
+            onQuickNoteChange={handleSaveQuickNote}
+            onSummarizeSlide={handleSummarizeSlide}
+            onExtractFlashcard={handleExtractFlashcard}
+            onAskAboutSlide={handleAskAboutSlide}
+            isGenerating={isGenerating || isUploading}
+          />
+        </Panel>
+
+        <ResizeHandle />
+
+        <Panel
+          id="right-panel"
+          defaultSize={384}
+          minSize={300}
+          maxSize={600}
+          collapsible
+          className="border-l border-slate-200 dark:border-slate-800"
+        >
+          <RightChatbot
+            agentStatus={{ mode: "RAG thật", model: "gpt-4o-mini", online: true }}
+            messages={messages}
+            onSendMessage={handleSendMessage}
+            isGenerating={isGenerating}
+            onSummarizeConversation={handleSummarizeConversation}
+            insight={insight}
+          />
+        </Panel>
+      </Group>
     </div>
   );
 }

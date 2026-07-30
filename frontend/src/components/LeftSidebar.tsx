@@ -33,7 +33,7 @@ export function LeftSidebar({
   onExportFlashcards,
 }: LeftSidebarProps) {
   return (
-    <aside className="w-80 min-w-[260px] shrink-0 flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800">
+    <aside className="w-full h-full flex flex-col bg-white dark:bg-slate-900">
       {/* Thương hiệu */}
       <div className="p-4 border-b border-slate-100 dark:border-slate-800">
         <p className="text-xs font-medium text-indigo-600 dark:text-indigo-400 uppercase tracking-wide">

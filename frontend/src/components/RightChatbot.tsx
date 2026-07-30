@@ -83,7 +83,7 @@ export function RightChatbot({
   }
 
   return (
-    <aside className="w-96 min-w-[320px] shrink-0 h-full flex flex-col bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800">
+    <aside className="w-full h-full flex flex-col bg-white dark:bg-slate-900">
       {/* Phần đầu - thông tin trợ lý AI */}
       <div className="h-14 flex items-center gap-2.5 px-3 border-b border-slate-200 dark:border-slate-800 shrink-0">
         <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white shrink-0">
