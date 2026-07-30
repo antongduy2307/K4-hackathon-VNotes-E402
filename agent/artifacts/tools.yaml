@@ -1,0 +1,32 @@
+tools:
+  - name: rag_query
+    description: "Answer a question about the content of the document open in this session. Calls the RAG backend and returns a grounded answer plus source page ranges. The document is fixed for the whole session — you do not supply doc_id; it is attached automatically."
+    parameters:
+      type: object
+      properties:
+        query: {type: string, description: "The learner's question, in their own words."}
+      required: [query]
+
+  - name: rag_summary
+    description: "Get a full-document summary for the document open in this session. Use once right after the learner opens the document, or when they explicitly ask for a summary. Takes no arguments — the document is attached automatically."
+    parameters:
+      type: object
+      properties: {}
+      required: []
+
+  - name: note_capture
+    description: "Filter this session's Q&A history into note-worthy items for the learner (question + grounded answer + source pages). Excludes whole-document summaries and off-topic exchanges automatically — you do not need to pre-filter. Call this only when the learner explicitly asks to save/note/tạo flashcard from the conversation so far. Takes no arguments — the document and conversation history are attached automatically; do not try to pass them yourself."
+    parameters:
+      type: object
+      properties: {}
+      required: []
+
+  - name: clarify
+    description: "Ask one necessary question and pause. Use when the learner's question is too ambiguous to route (e.g. refers to something not established in the conversation), or before an action that needs explicit confirmation."
+    parameters:
+      type: object
+      properties:
+        question: {type: string, description: "One concise question in the learner's language."}
+        response_type: {type: string, enum: [text, yes_no, choice], default: text}
+        options: {type: array, default: [], items: {type: string}}
+      required: [question, response_type]

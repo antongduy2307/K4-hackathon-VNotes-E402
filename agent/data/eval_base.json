@@ -1,0 +1,114 @@
+{
+  "dataset_id": "vlearn_agent_base",
+  "dataset_role": "base",
+  "description": "Core eval cho VLearn Tutor agent: routing đúng tool (rag_query/rag_summary/clarify/note_capture), ngoài phạm vi, multi-turn trong CÙNG một phiên (1 phiên = 1 tài liệu cố định, doc_id không bao giờ đổi giữa hội thoại và không do model cung cấp — không eval doc_id trong args). Chấm trên tool_calls + args (subset). KHÔNG sửa file này khi thêm case mới của team — thêm dataset riêng.",
+  "cases": [
+    {
+      "id": "R01_summary_on_open",
+      "phase": "B", "suite": "base",
+      "doc_id": "day01_intro",
+      "query": "Mình vừa mở tài liệu này, tóm tắt giúp mình.",
+      "failure_type": "wrong_tool",
+      "expect": {"tool_calls": [{"name": "rag_summary", "args": {}}]},
+      "metadata": {"skill": "routing_summary_on_open", "difficulty": "easy", "what_it_tests": "Vừa mở tài liệu + yêu cầu tóm tắt -> gọi rag_summary (không cần đối số, doc_id do hệ thống tự gắn)."}
+    },
+    {
+      "id": "R02_content_question_routing",
+      "phase": "B", "suite": "base",
+      "doc_id": "day03_optimization",
+      "query": "Gradient descent trong slide này hoạt động thế nào?",
+      "failure_type": "wrong_tool",
+      "expect": {"tool_calls": [{"name": "rag_query", "args": {}}]},
+      "metadata": {"skill": "routing_content_question", "difficulty": "easy", "what_it_tests": "Câu hỏi nội dung -> rag_query, không phải rag_summary. Không assert đúng nguyên văn query vì model được phép diễn giải lại câu hỏi."}
+    },
+    {
+      "id": "R03_ambiguous_reference",
+      "phase": "B", "suite": "base",
+      "doc_id": "day02_python",
+      "query": "Cái đó là sao nhỉ, giải thích lại giúp mình?",
+      "failure_type": "missing_info",
+      "expect": {"tool_calls": [{"name": "clarify", "args": {"response_type": "text"}}]},
+      "metadata": {"skill": "clarify_ambiguous_reference", "difficulty": "medium", "what_it_tests": "Câu hỏi mơ hồ, tham chiếu 'cái đó' không có referent nào được thiết lập trong hội thoại -> clarify. (Không phải trường hợp thiếu doc_id — doc_id luôn cố định theo phiên.)"}
+    },
+    {
+      "id": "R04_out_of_scope_unrelated",
+      "phase": "B", "suite": "base",
+      "doc_id": "day01_intro",
+      "query": "Giúp mình đặt vé máy bay đi Đà Lạt cuối tuần này.",
+      "failure_type": "out_of_scope",
+      "expect": {"no_tool": true, "behavior": "refuse"},
+      "metadata": {"skill": "out_of_scope_unrelated", "difficulty": "easy", "what_it_tests": "Yêu cầu hoàn toàn ngoài phạm vi học tập -> không gọi tool, từ chối."}
+    },
+    {
+      "id": "R05_meta_question",
+      "phase": "B", "suite": "base",
+      "doc_id": "day01_intro",
+      "query": "Bạn là ai và có thể giúp gì cho mình?",
+      "failure_type": "unnecessary_tool",
+      "expect": {"no_tool": true, "behavior": "answer_without_tool"},
+      "metadata": {"skill": "no_tool_meta", "difficulty": "easy", "what_it_tests": "Câu hỏi meta về agent -> trả lời thẳng, không gọi tool."}
+    },
+    {
+      "id": "R06_explicit_summary_request",
+      "phase": "B", "suite": "base",
+      "doc_id": "day05_agents",
+      "query": "Tóm tắt toàn bộ tài liệu này giúp mình.",
+      "failure_type": "wrong_tool",
+      "expect": {"tool_calls": [{"name": "rag_summary", "args": {}}]},
+      "metadata": {"skill": "routing_explicit_summary", "difficulty": "easy", "what_it_tests": "Yêu cầu tóm tắt tường minh (không phải lúc vừa mở) vẫn phải route đúng rag_summary."}
+    },
+    {
+      "id": "R07_out_of_scope_coding",
+      "phase": "B", "suite": "base",
+      "doc_id": "day02_python",
+      "query": "Viết giúp mình code Python sort một mảng bằng quicksort, không liên quan slide đâu.",
+      "failure_type": "out_of_scope",
+      "expect": {"no_tool": true, "behavior": "refuse"},
+      "metadata": {"skill": "out_of_scope_coding_explicit", "difficulty": "medium", "what_it_tests": "Học viên tự nói rõ 'không liên quan slide' -> từ chối, không gọi rag_query để không trả lời ngoài phạm vi."}
+    },
+    {
+      "id": "R08_note_capture_routing",
+      "phase": "B", "suite": "base",
+      "doc_id": "day03_optimization",
+      "query": "Note lại giúp mình các câu hỏi mình vừa hỏi trong buổi này nhé.",
+      "failure_type": "wrong_tool",
+      "expect": {"tool_calls": [{"name": "note_capture", "args": {}}]},
+      "metadata": {"skill": "routing_note_capture", "difficulty": "easy", "what_it_tests": "Yêu cầu lưu/note lại buổi học -> gọi note_capture (không đối số; doc_id + lịch sử hội thoại do hệ thống tự gắn), không tự liệt kê hội thoại bằng text."}
+    },
+    {
+      "id": "R09_note_capture_not_for_whole_slide",
+      "phase": "B", "suite": "base",
+      "doc_id": "day03_optimization",
+      "query": "Note lại giúp mình toàn bộ nội dung slide này.",
+      "failure_type": "wrong_boundary",
+      "expect": {"no_tool": true, "behavior": "refuse"},
+      "metadata": {"skill": "note_capture_scope_limit", "difficulty": "medium", "what_it_tests": "Yêu cầu note lại TOÀN BỘ slide (không phải câu hỏi cụ thể) -> agent giải thích giới hạn phạm vi, không gọi note_capture (tool này chỉ note Q&A cụ thể, không note whole-slide)."}
+    },
+    {
+      "id": "M01_followup_detail_question",
+      "phase": "B", "suite": "base",
+      "doc_id": "day04_transformers",
+      "turns": [
+        {"role": "user", "content": "Tóm tắt tài liệu này giúp mình."},
+        {"role": "user", "content": "Attention mechanism trong tài liệu này giải thích ra sao?"},
+        {"role": "user", "content": "Cụ thể hơn về self-attention nhé"}
+      ],
+      "failure_type": "wrong_tool",
+      "expect": {"tool_calls": [{"name": "rag_query", "args": {}}]},
+      "metadata": {"skill": "multiturn_followup_after_summary", "difficulty": "medium", "what_it_tests": "3 lượt trong CÙNG một phiên (1 tài liệu cố định): sau khi đã rag_summary ở lượt 1, các lượt hỏi chi tiết tiếp theo phải dùng rag_query, không gọi lại rag_summary và không clarify (không có gì mơ hồ vì tài liệu không đổi)."}
+    },
+    {
+      "id": "M02_offtopic_then_back_on_topic",
+      "phase": "B", "suite": "base",
+      "doc_id": "day02_python",
+      "turns": [
+        {"role": "user", "content": "List comprehension trong tài liệu này dùng để làm gì?"},
+        {"role": "user", "content": "Nhân tiện, tối nay có phim gì hay không nhỉ?"},
+        {"role": "user", "content": "Thôi, quay lại: cho ví dụ cụ thể về list comprehension trong slide đi"}
+      ],
+      "failure_type": "wrong_tool",
+      "expect": {"tool_calls": [{"name": "rag_query", "args": {}}]},
+      "metadata": {"skill": "multiturn_ignore_offtopic_middle_turn", "difficulty": "hard", "what_it_tests": "3 lượt: lượt giữa lạc đề (phim ảnh) không được xử lý; lượt cuối quay lại nội dung tài liệu -> phải route rag_query cho lượt cuối, không bị ảnh hưởng bởi lượt lạc đề ở giữa."}
+    }
+  ]
+}
