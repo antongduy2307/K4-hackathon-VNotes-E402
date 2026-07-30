@@ -38,7 +38,11 @@ agent/
   data/
     eval_base.json      case routing/clarify/out-of-scope/multi-turn (trong CÙNG 1 phiên/tài liệu)
     eval_guardrail.json case guardrail (mock tool result, chấm câu trả lời cuối)
-  tests/               test không cần API key (mock HTTP call tới backend)
+  export/
+    anki_export.py      note_capture output -> file .apkg (genanki, offline, không cần Anki app)
+    notion_export.py     note_capture output -> tạo page trong Notion database (Notion API thật)
+  export_api.py        FastAPI: 2 endpoint cho nút "Lưu Anki"/"Lưu Notion" trên UI — KHÔNG qua agent/LLM
+  tests/               test không cần API key (mock HTTP call tới backend/Notion)
 ```
 
 ## Setup
@@ -82,6 +86,30 @@ prompt, tuân theo chỉ thị cấy trong tài liệu) và có ít nhất một
 `required_patterns_any` (ví dụ câu từ chối "tài liệu không đề cập" khi RAG
 không có dữ liệu).
 
+## Export (app-driven, không qua LLM)
+
+`note_capture` chỉ lọc + trả note có cấu trúc. Export ra Anki/Notion là hành
+động người dùng bấm nút trên UI, gọi thẳng `export_api.py` với đúng list note
+đó — không để model tự quyết định ghi ra hệ thống ngoài.
+
+```bash
+uvicorn export_api:app --reload --port 8100
+```
+
+- `POST /export/anki` — body `{"doc_id": "...", "notes": [...]}` (notes lấy
+  nguyên từ output của `note_capture`) → trả file `.apkg` tải về, import thẳng
+  vào Anki. Offline hoàn toàn, không cần Anki app/AnkiConnect chạy nền — genanki
+  tự sinh file. Deck ID cố định theo `doc_id` (hash), nên export lại cùng tài
+  liệu sẽ update đúng deck đó khi import lại, không tạo trùng.
+- `POST /export/notion` — cùng body → tạo 1 page/note trong Notion database.
+  Cần cấu hình trước: tạo integration tại notion.so/my-integrations, lấy
+  `NOTION_API_KEY`, share database đích với integration đó, điền
+  `NOTION_DATABASE_ID`. Database cần đúng 4 cột: `Question` (title), `Answer`
+  (rich text), `Source` (rich text), `DocID` (rich text). Trả về
+  `created_count`/`failed_count` + link từng page đã tạo.
+- Obsidian: chưa làm (sau MVP) — sẽ chỉ là ghi file `.md` có frontmatter vào
+  vault, không cần API/auth gì.
+
 ## Test không cần API key
 
 ```bash
@@ -90,8 +118,10 @@ pytest
 Mock HTTP call bằng `unittest.mock.patch`, kiểm tra: tool registry khớp
 `tools.yaml`, `eval_base.json`/`eval_guardrail.json` đúng shape, `rag_query`/
 `rag_summary` không bao giờ raise exception (luôn trả dict lỗi) khi backend
-sập, và logic lọc của `note_capture` (giữ đúng câu hỏi chi tiết, loại whole-doc
-summary + off-topic).
+sập, logic lọc của `note_capture` (giữ đúng câu hỏi chi tiết, loại whole-doc
+summary + off-topic), `anki_export` sinh file `.apkg` hợp lệ (zip thật, deck_id
+ổn định theo `doc_id`), `notion_export` gọi đúng payload và không raise khi
+Notion API lỗi/thiếu config.
 
 ## Nhật ký eval thật đã chạy (tham khảo cách điều chỉnh prompt từ kết quả)
 
@@ -110,9 +140,11 @@ summary + off-topic).
 
 - `eval_guardrail.py` và `run_eval.py` đều cần `OPENAI_API_KEY` thật để chạy —
   chỉ `pytest` chạy được hoàn toàn offline.
-- `note_capture` chỉ trả về note đã lọc, chưa export ra Anki/Notion — đợi
-  backend/FE quyết định format export rồi thêm tool riêng (side_effect
-  live_api hoặc local_file_write), tránh đổi lại tool hiện có.
+- Obsidian export chưa làm — dự kiến sau MVP, chỉ ghi `.md` vào vault, không
+  cần API/auth.
+- `export/notion_export.py` gọi Notion API tuần tự từng note (không batch) —
+  đủ nhanh cho demo vài chục note, nếu về sau nhiều note nên cân nhắc song song
+  hoá hoặc rate-limit backoff.
 - `tools/_shared.py` dùng `requests` đồng bộ, timeout cố định 30s — nếu
   backend RAG chậm (map-reduce summary dài), có thể cần tăng timeout hoặc
   polling job riêng.
