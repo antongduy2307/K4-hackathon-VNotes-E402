@@ -101,12 +101,16 @@ uvicorn export_api:app --reload --port 8100
   vào Anki. Offline hoàn toàn, không cần Anki app/AnkiConnect chạy nền — genanki
   tự sinh file. Deck ID cố định theo `doc_id` (hash), nên export lại cùng tài
   liệu sẽ update đúng deck đó khi import lại, không tạo trùng.
-- `POST /export/notion` — cùng body → tạo 1 page/note trong Notion database.
-  Cần cấu hình trước: tạo integration tại notion.so/my-integrations, lấy
-  `NOTION_API_KEY`, share database đích với integration đó, điền
-  `NOTION_DATABASE_ID`. Database cần đúng 4 cột: `Question` (title), `Answer`
-  (rich text), `Source` (rich text), `DocID` (rich text). Trả về
-  `created_count`/`failed_count` + link từng page đã tạo.
+- `POST /export/notion` — cùng body → tổng hợp toàn bộ câu hỏi-đáp thành các Ý
+  CHÍNH (gộp câu hỏi trùng chủ đề, không liệt kê nguyên văn Q&A) rồi append vào
+  MỘT trang Notion có sẵn dưới dạng bullet list, không cần database/cột gì.
+  Setup 3 bước, không cần biết code:
+  1. Tạo integration tại notion.so/my-integrations, copy token → `NOTION_API_KEY`.
+  2. Mở BẤT KỲ trang Notion nào, Share → Connections → add integration đó.
+  3. Copy URL trang đó (hoặc chỉ id 32 ký tự) → `NOTION_PAGE_ID`.
+  Tổng hợp ý chính dùng 1 lần gọi OpenAI (`OPENAI_API_KEY` đã có sẵn) — nếu
+  thiếu key hoặc gọi lỗi, tự rơi về mỗi note 1 bullet "câu hỏi — câu trả lời"
+  (không chặn export). Trả về `key_point_count`, `key_points`, `page_url`.
 - Obsidian: chưa làm (sau MVP) — sẽ chỉ là ghi file `.md` có frontmatter vào
   vault, không cần API/auth gì.
 

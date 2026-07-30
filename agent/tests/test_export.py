@@ -7,7 +7,7 @@ from tempfile import TemporaryDirectory
 from unittest.mock import Mock, patch
 
 from export.anki_export import build_anki_deck, export_anki_to_file
-from export.notion_export import push_notes_to_notion
+from export.notion_export import consolidate_notes, extract_page_id, push_notes_to_notion
 
 SAMPLE_NOTES = [
     {"question": "Gradient descent là gì?", "answer": "Thuật toán tối ưu lặp.", "sources": [{"page_start": 3, "page_end": 4}]},
@@ -42,41 +42,74 @@ class AnkiExportTests(unittest.TestCase):
             self.assertTrue(zipfile.is_zipfile(out_path))
 
 
+class NotionPageIdTests(unittest.TestCase):
+    def test_extracts_id_from_full_url(self) -> None:
+        url = "https://www.notion.so/myteam/a1b2c3d4e5f647890abcdef123456789?v=xyz"
+        self.assertEqual(extract_page_id(url), "a1b2c3d4e5f647890abcdef123456789")
+
+    def test_extracts_id_from_dashed_url(self) -> None:
+        url = "https://www.notion.so/a1b2c3d4-e5f6-4789-0abc-def123456789"
+        self.assertEqual(extract_page_id(url), "a1b2c3d4e5f647890abcdef123456789")
+
+    def test_passes_through_bare_id(self) -> None:
+        self.assertEqual(extract_page_id("a1b2c3d4e5f647890abcdef123456789"), "a1b2c3d4e5f647890abcdef123456789")
+
+
+class ConsolidateNotesTests(unittest.TestCase):
+    def test_without_openai_key_falls_back_to_one_bullet_per_note(self) -> None:
+        bullets = consolidate_notes(SAMPLE_NOTES, api_key=None)
+        self.assertEqual(len(bullets), 2)
+        self.assertIn("Gradient descent là gì?", bullets[0])
+
+    @patch("openai.OpenAI")
+    def test_uses_llm_output_lines_when_key_present(self, mock_openai_cls: Mock) -> None:
+        mock_client = Mock()
+        mock_client.chat.completions.create.return_value = Mock(
+            choices=[Mock(message=Mock(content="- Ý chính A\n- Ý chính B"))]
+        )
+        mock_openai_cls.return_value = mock_client
+
+        bullets = consolidate_notes(SAMPLE_NOTES, api_key="secret")
+        self.assertEqual(bullets, ["Ý chính A", "Ý chính B"])
+
+    @patch("openai.OpenAI", side_effect=RuntimeError("network down"))
+    def test_llm_failure_falls_back_to_one_bullet_per_note(self, _mock_openai_cls: Mock) -> None:
+        bullets = consolidate_notes(SAMPLE_NOTES, api_key="secret")
+        self.assertEqual(len(bullets), 2)
+
+
 class NotionExportTests(unittest.TestCase):
     def test_missing_api_key_returns_error_without_http_call(self) -> None:
-        result = push_notes_to_notion(SAMPLE_NOTES, doc_id="day03_optimization", api_key=None, database_id="db123")
+        result = push_notes_to_notion(SAMPLE_NOTES, doc_id="day03_optimization", api_key=None, page_id="page123")
         self.assertEqual(result["error"], "missing_config")
 
-    def test_missing_database_id_returns_error_without_http_call(self) -> None:
-        result = push_notes_to_notion(SAMPLE_NOTES, doc_id="day03_optimization", api_key="secret", database_id=None)
+    def test_missing_page_id_returns_error_without_http_call(self) -> None:
+        result = push_notes_to_notion(SAMPLE_NOTES, doc_id="day03_optimization", api_key="secret", page_id=None)
         self.assertEqual(result["error"], "missing_config")
 
     def test_empty_notes_returns_error(self) -> None:
-        result = push_notes_to_notion([], doc_id="day03_optimization", api_key="secret", database_id="db123")
+        result = push_notes_to_notion([], doc_id="day03_optimization", api_key="secret", page_id="page123")
         self.assertEqual(result["error"], "no_notes")
 
-    @patch("export.notion_export.requests.post")
-    def test_creates_one_page_per_note_with_correct_properties(self, mock_post: Mock) -> None:
-        mock_post.return_value = Mock(
-            raise_for_status=Mock(),
-            json=Mock(return_value={"id": "page-1", "url": "https://notion.so/page-1"}),
+    @patch("export.notion_export.requests.patch")
+    def test_appends_heading_and_one_bullet_per_key_point(self, mock_patch: Mock) -> None:
+        mock_patch.return_value = Mock(raise_for_status=Mock())
+        result = push_notes_to_notion(
+            SAMPLE_NOTES, doc_id="day03_optimization", api_key="secret", page_id="page123", openai_api_key=None,
         )
-        result = push_notes_to_notion(SAMPLE_NOTES, doc_id="day03_optimization", api_key="secret", database_id="db123")
 
-        self.assertEqual(result["created_count"], 2)
-        self.assertEqual(result["failed_count"], 0)
-        self.assertEqual(mock_post.call_count, 2)
+        self.assertEqual(result["key_point_count"], 2)
+        mock_patch.assert_called_once()
+        call_url = mock_patch.call_args.args[0]
+        self.assertEqual(call_url, "https://api.notion.com/v1/blocks/page123/children")
+        children = mock_patch.call_args.kwargs["json"]["children"]
+        self.assertEqual(children[0]["type"], "heading_2")
+        self.assertEqual(len(children), 1 + 2)  # heading + 2 fallback bullets
 
-        first_call_payload = mock_post.call_args_list[0].kwargs["json"]
-        self.assertEqual(first_call_payload["parent"], {"database_id": "db123"})
-        title = first_call_payload["properties"]["Question"]["title"][0]["text"]["content"]
-        self.assertEqual(title, "Gradient descent là gì?")
-
-    @patch("export.notion_export.requests.post", side_effect=ConnectionError("network down"))
-    def test_per_note_http_failure_is_collected_not_raised(self, _mock_post: Mock) -> None:
-        result = push_notes_to_notion(SAMPLE_NOTES, doc_id="day03_optimization", api_key="secret", database_id="db123")
-        self.assertEqual(result["created_count"], 0)
-        self.assertEqual(result["failed_count"], 2)
+    @patch("export.notion_export.requests.patch", side_effect=ConnectionError("network down"))
+    def test_http_failure_returns_error_instead_of_raising(self, _mock_patch: Mock) -> None:
+        result = push_notes_to_notion(SAMPLE_NOTES, doc_id="day03_optimization", api_key="secret", page_id="page123")
+        self.assertIn("error", result)
 
 
 if __name__ == "__main__":
