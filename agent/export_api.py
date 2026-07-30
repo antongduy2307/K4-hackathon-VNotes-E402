@@ -37,6 +37,7 @@ class Note(BaseModel):
 class ExportRequest(BaseModel):
     doc_id: str
     notes: list[Note]
+    title: str | None = None  # human-readable document/slide name; falls back to doc_id if absent
 
 
 @app.post("/export/anki")
@@ -67,7 +68,7 @@ async def export_obsidian(request: ExportRequest) -> FileResponse:
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / f"{request.doc_id}.md"
 
-    export_obsidian_to_file(notes, doc_id=request.doc_id, out_path=out_path)
+    export_obsidian_to_file(notes, title=request.title or request.doc_id, out_path=out_path)
     return FileResponse(
         out_path,
         media_type="text/markdown",

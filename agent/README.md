@@ -112,12 +112,21 @@ uvicorn export_api:app --reload --port 8100
   Tổng hợp ý chính dùng 1 lần gọi OpenAI (`OPENAI_API_KEY` đã có sẵn) — nếu
   thiếu key hoặc gọi lỗi, tự rơi về mỗi note 1 bullet "câu hỏi — câu trả lời"
   (không chặn export). Trả về `key_point_count`, `key_points`, `page_url`.
-- `POST /export/obsidian` — cùng body → trả file `.md` tải về (frontmatter
-  `doc_id`/`created`/`tags` + mục "Ý chính" tổng hợp giống Notion + mục "Chi
-  tiết câu hỏi & trả lời" đầy đủ Q&A kèm trích trang). Không API, không auth,
-  không network call ngoài (trừ 1 lần gọi OpenAI để tổng hợp ý chính, cùng
-  fallback như Notion nếu thiếu key). User tự kéo file vào vault Obsidian của
-  họ — đây là cách export ít setup nhất trong 3 cái.
+- `POST /export/obsidian` — body thêm `title` (tên hiển thị của slide/tài
+  liệu, không phải `doc_id`) → trả file `.md` tải về. Frontmatter CHỈ có
+  `title` — không doc_id, không ngày giờ, không tag rối mắt. Nội dung: mục "Ý
+  chính" (dùng chung `consolidate_notes` với Notion) + mục "Chi tiết câu hỏi &
+  trả lời" đầy đủ Q&A kèm trích trang. Không API, không auth, không network
+  call ngoài (trừ 1 lần gọi OpenAI để tổng hợp ý chính, cùng fallback như
+  Notion nếu thiếu key).
+  **Export lại cùng tài liệu sẽ UPDATE file cũ, không tạo file mới**: dựa vào
+  `doc_id` để xác định đúng file (`{doc_id}.md` trong thư mục export tạm),
+  đọc nội dung cũ, chỉ thêm câu hỏi CHƯA từng xuất hiện trong file (so theo
+  nguyên văn câu hỏi), chỉ tổng hợp ý chính cho riêng phần mới đó rồi nối vào
+  danh sách ý chính cũ — không đụng/viết lại các câu hỏi và ý chính đã xuất
+  trước đó. Nếu không có câu hỏi mới nào, file giữ nguyên y hệt. Nếu file cũ
+  không đúng format do bị sửa tay, tự động coi như chưa có gì và tạo lại từ
+  đầu (không cố gộp, tránh làm hỏng thêm).
 
 ## Test không cần API key
 
@@ -149,8 +158,12 @@ Notion API lỗi/thiếu config.
 
 - `eval_guardrail.py` và `run_eval.py` đều cần `OPENAI_API_KEY` thật để chạy —
   chỉ `pytest` chạy được hoàn toàn offline.
-- Obsidian export chưa làm — dự kiến sau MVP, chỉ ghi `.md` vào vault, không
-  cần API/auth.
+- **Bug thật ở `backend/` phát hiện khi test end-to-end (không phải code
+  agent):** `summarize_document` (map-reduce, nhiều chunk) chạy hàng chục lệnh
+  OpenAI tuần tự đồng bộ bên trong route `async def` mà không offload sang
+  thread — chặn cứng cả FastAPI worker trong lúc xử lý, khiến các request khác
+  (kể cả `/chat` đơn giản) xếp hàng và dễ timeout phía agent. Cần backend sửa
+  bằng `run_in_threadpool`/`asyncio.to_thread` trước khi demo tài liệu dài.
 - `export/notion_export.py` gọi Notion API tuần tự từng note (không batch) —
   đủ nhanh cho demo vài chục note, nếu về sau nhiều note nên cân nhắc song song
   hoá hoặc rate-limit backoff.
