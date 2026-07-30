@@ -8,6 +8,7 @@ from unittest.mock import Mock, patch
 
 from export.anki_export import build_anki_deck, export_anki_to_file
 from export.notion_export import consolidate_notes, extract_page_id, push_notes_to_notion
+from export.obsidian_export import build_obsidian_markdown, export_obsidian_to_file
 
 SAMPLE_NOTES = [
     {"question": "Gradient descent là gì?", "answer": "Thuật toán tối ưu lặp.", "sources": [{"page_start": 3, "page_end": 4}]},
@@ -40,6 +41,32 @@ class AnkiExportTests(unittest.TestCase):
             export_anki_to_file(SAMPLE_NOTES, doc_id="day03_optimization", out_path=out_path)
             self.assertTrue(out_path.exists())
             self.assertTrue(zipfile.is_zipfile(out_path))
+
+
+class ObsidianExportTests(unittest.TestCase):
+    def test_markdown_has_frontmatter_with_doc_id(self) -> None:
+        content = build_obsidian_markdown(SAMPLE_NOTES, doc_id="day03_optimization", openai_api_key=None)
+        self.assertTrue(content.startswith("---\n"))
+        self.assertIn('doc_id: "day03_optimization"', content)
+
+    def test_markdown_includes_key_points_and_qa_sections(self) -> None:
+        content = build_obsidian_markdown(SAMPLE_NOTES, doc_id="day03_optimization", openai_api_key=None)
+        self.assertIn("## Ý chính", content)
+        self.assertIn("## Chi tiết câu hỏi & trả lời", content)
+        self.assertIn("Gradient descent là gì?", content)
+        self.assertIn("tr.3-4", content)
+
+    def test_empty_notes_raises(self) -> None:
+        with self.assertRaises(ValueError):
+            build_obsidian_markdown([], doc_id="day03_optimization")
+
+    def test_export_writes_utf8_file(self) -> None:
+        with TemporaryDirectory() as tmp:
+            out_path = Path(tmp) / "note.md"
+            export_obsidian_to_file(SAMPLE_NOTES, doc_id="day03_optimization", out_path=out_path, openai_api_key=None)
+            self.assertTrue(out_path.exists())
+            text = out_path.read_text(encoding="utf-8")
+            self.assertIn("Gradient descent", text)
 
 
 class NotionPageIdTests(unittest.TestCase):

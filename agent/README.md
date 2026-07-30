@@ -40,8 +40,9 @@ agent/
     eval_guardrail.json case guardrail (mock tool result, chấm câu trả lời cuối)
   export/
     anki_export.py      note_capture output -> file .apkg (genanki, offline, không cần Anki app)
-    notion_export.py     note_capture output -> tạo page trong Notion database (Notion API thật)
-  export_api.py        FastAPI: 2 endpoint cho nút "Lưu Anki"/"Lưu Notion" trên UI — KHÔNG qua agent/LLM
+    notion_export.py     note_capture output -> ý chính, append vào 1 trang Notion có sẵn (Notion API thật)
+    obsidian_export.py   note_capture output -> file .md (frontmatter + ý chính + Q&A), không API/auth
+  export_api.py        FastAPI: 3 endpoint cho nút "Lưu Anki"/"Lưu Notion"/"Lưu Obsidian" trên UI — KHÔNG qua agent/LLM
   tests/               test không cần API key (mock HTTP call tới backend/Notion)
 ```
 
@@ -111,8 +112,12 @@ uvicorn export_api:app --reload --port 8100
   Tổng hợp ý chính dùng 1 lần gọi OpenAI (`OPENAI_API_KEY` đã có sẵn) — nếu
   thiếu key hoặc gọi lỗi, tự rơi về mỗi note 1 bullet "câu hỏi — câu trả lời"
   (không chặn export). Trả về `key_point_count`, `key_points`, `page_url`.
-- Obsidian: chưa làm (sau MVP) — sẽ chỉ là ghi file `.md` có frontmatter vào
-  vault, không cần API/auth gì.
+- `POST /export/obsidian` — cùng body → trả file `.md` tải về (frontmatter
+  `doc_id`/`created`/`tags` + mục "Ý chính" tổng hợp giống Notion + mục "Chi
+  tiết câu hỏi & trả lời" đầy đủ Q&A kèm trích trang). Không API, không auth,
+  không network call ngoài (trừ 1 lần gọi OpenAI để tổng hợp ý chính, cùng
+  fallback như Notion nếu thiếu key). User tự kéo file vào vault Obsidian của
+  họ — đây là cách export ít setup nhất trong 3 cái.
 
 ## Test không cần API key
 
