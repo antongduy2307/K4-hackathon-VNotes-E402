@@ -16,8 +16,9 @@ type LeftSidebarProps = {
   onSelectNode: (id: string) => void;
   notes: SavedNote[];
   flashcards: SavedFlashcard[];
-  onExportNotes: () => void;
-  onExportFlashcards: () => void;
+  onExportAnki: () => void;
+  onExportObsidian: () => void;
+  isExporting: boolean;
 };
 
 export function LeftSidebar({
@@ -29,8 +30,9 @@ export function LeftSidebar({
   onSelectNode,
   notes,
   flashcards,
-  onExportNotes,
-  onExportFlashcards,
+  onExportAnki,
+  onExportObsidian,
+  isExporting,
 }: LeftSidebarProps) {
   return (
     <aside className="w-full h-full flex flex-col bg-white dark:bg-slate-900">
@@ -104,16 +106,18 @@ export function LeftSidebar({
           </p>
           <div className="flex gap-2">
             <button
-              onClick={onExportNotes}
-              className="text-[10px] text-indigo-600 dark:text-indigo-400 hover:underline font-medium flex items-center gap-0.5"
-            >
-              <Download className="w-2.5 h-2.5" /> Ghi chú
-            </button>
-            <button
-              onClick={onExportFlashcards}
-              className="text-[10px] text-indigo-600 dark:text-indigo-400 hover:underline font-medium flex items-center gap-0.5"
+              onClick={onExportAnki}
+              disabled={isExporting}
+              className="text-[10px] text-indigo-600 dark:text-indigo-400 hover:underline font-medium flex items-center gap-0.5 disabled:opacity-50 disabled:no-underline"
             >
               <Download className="w-2.5 h-2.5" /> Anki
+            </button>
+            <button
+              onClick={onExportObsidian}
+              disabled={isExporting}
+              className="text-[10px] text-indigo-600 dark:text-indigo-400 hover:underline font-medium flex items-center gap-0.5 disabled:opacity-50 disabled:no-underline"
+            >
+              <Download className="w-2.5 h-2.5" /> Obsidian
             </button>
           </div>
         </div>

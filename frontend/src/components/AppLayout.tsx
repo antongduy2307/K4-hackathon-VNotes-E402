@@ -8,6 +8,7 @@ import { SlideViewer } from "@/components/SlideViewer";
 import { RightChatbot } from "@/components/RightChatbot";
 import { ResizeHandle } from "@/components/ResizeHandle";
 import { askChat, fetchSummary, uploadSlide } from "@/lib/api";
+import { captureNotes, exportAnki, exportObsidian, type ConversationTurn } from "@/lib/exportApi";
 import {
   mockChatHistory,
   mockContentTree,
@@ -22,16 +23,6 @@ function nowLabel() {
   return new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
 }
 
-function download(filename: string, content: string) {
-  const blob = new Blob([content], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
 export function AppLayout() {
   const [course, setCourse] = useState<CourseSource>(mockCourse);
   const [activeNodeId, setActiveNodeId] = useState(mockContentTree[1].id);
@@ -43,6 +34,10 @@ export function AppLayout() {
   const [messages, setMessages] = useState<ChatMessage[]>(mockChatHistory);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  // Lịch sử hỏi-đáp thật, dùng làm nguồn cho export Anki/Obsidian (note_capture
+  // lọc bỏ tool_used=rag_summary và câu hỏi off-topic khi build ghi chú thật).
+  const [conversationTurns, setConversationTurns] = useState<ConversationTurn[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const insight =
     "Case thật từ data: 12% học viên bỏ qua phần 'chiến lược chunking' và thường hỏi sai ở buổi ôn tập tiếp theo.";
@@ -79,6 +74,10 @@ export function AppLayout() {
     try {
       const res = await askChat(course.docId, text);
       pushAssistantMessage(res.answer);
+      setConversationTurns((prev) => [
+        ...prev,
+        { question: text, answer: res.answer, tool_used: "rag_query", sources: res.sources },
+      ]);
     } catch {
       pushAssistantMessage(
         "Mình chưa thể kết nối tới RAG backend. Hãy chắc chắn đã nhập tài liệu và backend đang chạy."
@@ -101,6 +100,10 @@ export function AppLayout() {
       const res = await fetchSummary(course.docId);
       setQuickNote(res.answer);
       pushAssistantMessage(`Tóm tắt tài liệu (trang ${currentPage} đang xem): ${res.answer}`);
+      setConversationTurns((prev) => [
+        ...prev,
+        { question: `Tóm tắt tài liệu (trang ${currentPage})`, answer: res.answer, tool_used: "rag_summary", sources: res.sources },
+      ]);
     } catch {
       pushAssistantMessage("Không tóm tắt được lúc này. Hãy chắc chắn đã nhập tài liệu và backend đang chạy.");
     } finally {
@@ -123,19 +126,70 @@ export function AppLayout() {
     setQuickNote(value);
   }
 
-  function handleSummarizeConversation() {
-    const note: SavedNote = {
-      id: crypto.randomUUID(),
-      title: `Tóm tắt hội thoại - trang ${currentPage}`,
-      snippet: messages
-        .slice(-3)
-        .map((m) => m.content)
-        .join(" | ")
-        .slice(0, 120),
-      createdAt: new Date().toISOString().slice(0, 10),
-    };
-    setNotes((prev) => [note, ...prev]);
-    pushAssistantMessage("Đã tóm gọn kiến thức hội thoại và lưu vào Kho lưu trữ.");
+  async function handleSummarizeConversation() {
+    if (conversationTurns.length === 0) {
+      pushAssistantMessage("Chưa có hội thoại hỏi-đáp nào để tóm gọn — hãy hỏi mình về nội dung tài liệu trước.");
+      return;
+    }
+    try {
+      const result = await captureNotes(course.docId, conversationTurns);
+      if (result.kept_count === 0) {
+        pushAssistantMessage("Không có câu hỏi nào đủ điều kiện để lưu thành ghi chú (đã lọc bỏ câu hỏi tóm tắt/off-topic).");
+        return;
+      }
+      const savedNotes: SavedNote[] = result.notes.map((n) => ({
+        id: crypto.randomUUID(),
+        title: n.question.slice(0, 60),
+        snippet: n.answer.slice(0, 120),
+        createdAt: new Date().toISOString().slice(0, 10),
+      }));
+      setNotes((prev) => [...savedNotes, ...prev]);
+      pushAssistantMessage(`Đã tóm gọn ${result.kept_count} ghi chú và lưu vào Kho lưu trữ.`);
+    } catch {
+      pushAssistantMessage("Không kết nối được tới dịch vụ export. Hãy chắc chắn export_api đang chạy (port 8100).");
+    }
+  }
+
+  async function handleExportAnki() {
+    if (conversationTurns.length === 0) {
+      pushAssistantMessage("Chưa có hội thoại nào để xuất Anki — hãy hỏi mình về nội dung tài liệu trước.");
+      return;
+    }
+    setIsExporting(true);
+    try {
+      const captured = await captureNotes(course.docId, conversationTurns);
+      if (captured.kept_count === 0) {
+        pushAssistantMessage("Không có ghi chú nào đủ điều kiện để xuất Anki.");
+        return;
+      }
+      await exportAnki(course.docId, captured.notes);
+      pushAssistantMessage(`Đã xuất ${captured.kept_count} thẻ Anki (.apkg).`);
+    } catch {
+      pushAssistantMessage("Xuất Anki thất bại. Hãy chắc chắn export_api đang chạy (port 8100).");
+    } finally {
+      setIsExporting(false);
+    }
+  }
+
+  async function handleExportObsidian() {
+    if (conversationTurns.length === 0) {
+      pushAssistantMessage("Chưa có hội thoại nào để xuất Obsidian — hãy hỏi mình về nội dung tài liệu trước.");
+      return;
+    }
+    setIsExporting(true);
+    try {
+      const captured = await captureNotes(course.docId, conversationTurns);
+      if (captured.kept_count === 0) {
+        pushAssistantMessage("Không có ghi chú nào đủ điều kiện để xuất Obsidian.");
+        return;
+      }
+      await exportObsidian(course.docId, captured.notes, course.fileName);
+      pushAssistantMessage(`Đã xuất ${captured.kept_count} ghi chú sang Obsidian (.md).`);
+    } catch {
+      pushAssistantMessage("Xuất Obsidian thất bại. Hãy chắc chắn export_api đang chạy (port 8100).");
+    } finally {
+      setIsExporting(false);
+    }
   }
 
   return (
@@ -173,10 +227,9 @@ export function AppLayout() {
             onSelectNode={setActiveNodeId}
             notes={notes}
             flashcards={flashcards}
-            onExportNotes={() => download("notes.json", JSON.stringify(notes, null, 2))}
-            onExportFlashcards={() =>
-              download("flashcards.json", JSON.stringify(flashcards, null, 2))
-            }
+            onExportAnki={handleExportAnki}
+            onExportObsidian={handleExportObsidian}
+            isExporting={isExporting}
           />
         </Panel>
 
