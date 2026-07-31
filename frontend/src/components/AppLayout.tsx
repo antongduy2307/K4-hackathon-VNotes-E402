@@ -35,7 +35,8 @@ function download(filename: string, content: string) {
 export function AppLayout() {
   const [course, setCourse] = useState<CourseSource>(mockCourse);
   const [activeNodeId, setActiveNodeId] = useState(mockContentTree[1].id);
-  const [currentPage, setCurrentPage] = useState(13);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [currentPageText, setCurrentPageText] = useState("");
   const [quickNote, setQuickNote] = useState("");
   const [notes, setNotes] = useState<SavedNote[]>(mockNotes);
   const [flashcards, setFlashcards] = useState<SavedFlashcard[]>(mockFlashcards);
@@ -46,13 +47,12 @@ export function AppLayout() {
   const insight =
     "Case thật từ data: 12% học viên bỏ qua phần 'chiến lược chunking' và thường hỏi sai ở buổi ôn tập tiếp theo.";
 
-  const currentSlide = course.pages.find((p) => p.page === currentPage) ?? course.pages[0];
-
   async function handleUploadDocument(file: File) {
     setIsUploading(true);
     try {
       const res = await uploadSlide(file);
-      setCourse((prev) => ({ ...prev, docId: res.slide_id, fileName: file.name }));
+      setCourse({ docId: res.slide_id, fileName: file.name });
+      setCurrentPage(1);
       pushAssistantMessage(
         `Đã nhập tài liệu "${file.name}" thành công (${res.chunk_count} đoạn nội dung). Bạn có thể bắt đầu hỏi mình về nội dung này.`
       );
@@ -90,8 +90,8 @@ export function AppLayout() {
 
   function handleAskAboutSlide(selectedText?: string) {
     const question = selectedText
-      ? `Giải thích giúp mình đoạn này trong slide ${currentSlide.label}: "${selectedText}"`
-      : `Bạn có thể tóm tắt nội dung chính của slide ${currentSlide.label} không?`;
+      ? `Giải thích giúp mình đoạn này ở trang ${currentPage}: "${selectedText}"`
+      : `Bạn có thể tóm tắt nội dung chính của trang ${currentPage} không?`;
     handleSendMessage(question);
   }
 
@@ -100,11 +100,9 @@ export function AppLayout() {
     try {
       const res = await fetchSummary(course.docId);
       setQuickNote(res.answer);
-      pushAssistantMessage(`Tóm tắt slide ${currentSlide.label}: ${res.answer}`);
+      pushAssistantMessage(`Tóm tắt tài liệu (trang ${currentPage} đang xem): ${res.answer}`);
     } catch {
-      const fallback = `${currentSlide.title}: ${currentSlide.bullets.join("; ")}`;
-      setQuickNote(fallback);
-      pushAssistantMessage(`Tóm tắt slide ${currentSlide.label}: ${fallback}`);
+      pushAssistantMessage("Không tóm tắt được lúc này. Hãy chắc chắn đã nhập tài liệu và backend đang chạy.");
     } finally {
       setIsGenerating(false);
     }
@@ -113,12 +111,12 @@ export function AppLayout() {
   function handleExtractFlashcard() {
     const card: SavedFlashcard = {
       id: crypto.randomUUID(),
-      front: `${currentSlide.title}?`,
-      back: currentSlide.bullets[0] ?? currentSlide.extractedText.slice(0, 80),
+      front: `Trang ${currentPage} — ${course.fileName}?`,
+      back: currentPageText.slice(0, 160) || "(chưa có nội dung trích xuất cho trang này)",
       createdAt: new Date().toISOString().slice(0, 10),
     };
     setFlashcards((prev) => [card, ...prev]);
-    pushAssistantMessage(`Đã tạo flashcard mới từ ${currentSlide.label}.`);
+    pushAssistantMessage(`Đã tạo flashcard mới từ trang ${currentPage}.`);
   }
 
   function handleSaveQuickNote(value: string) {
@@ -128,7 +126,7 @@ export function AppLayout() {
   function handleSummarizeConversation() {
     const note: SavedNote = {
       id: crypto.randomUUID(),
-      title: `Tóm tắt hội thoại - ${currentSlide.label}`,
+      title: `Tóm tắt hội thoại - trang ${currentPage}`,
       snippet: messages
         .slice(-3)
         .map((m) => m.content)
@@ -146,7 +144,7 @@ export function AppLayout() {
       <input
         ref={fileInputRef}
         type="file"
-        accept="application/pdf"
+        accept="application/pdf,.pptx"
         className="hidden"
         onChange={(e) => {
           const file = e.target.files?.[0];
@@ -167,7 +165,7 @@ export function AppLayout() {
           className="border-r border-slate-200 dark:border-slate-800"
         >
           <LeftSidebar
-            fileName={course.fileName}
+            fileName={course.fileName || "Chưa có tài liệu"}
             totalLessons={mockContentTree.length}
             reviewStats={mockReviewStats}
             contentTree={mockContentTree}
@@ -186,7 +184,8 @@ export function AppLayout() {
 
         <Panel id="main-panel" minSize={360}>
           <SlideViewer
-            course={course}
+            docId={course.docId}
+            fileName={course.fileName}
             currentPage={currentPage}
             onPageChange={setCurrentPage}
             quickNote={quickNote}
@@ -194,6 +193,7 @@ export function AppLayout() {
             onSummarizeSlide={handleSummarizeSlide}
             onExtractFlashcard={handleExtractFlashcard}
             onAskAboutSlide={handleAskAboutSlide}
+            onPageTextChange={setCurrentPageText}
             isGenerating={isGenerating || isUploading}
           />
         </Panel>

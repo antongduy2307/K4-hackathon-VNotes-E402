@@ -1,24 +1,34 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   BookOpenCheck,
   ChevronLeft,
   ChevronRight,
+  FileWarning,
   Layers,
   MessageCircleQuestion,
   Sparkles,
+  UploadCloud,
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import { FlashcardFlip } from "@/components/FlashcardFlip";
-import type { CourseSource } from "@/lib/types";
+import { fetchPageText, slideFileUrl } from "@/lib/api";
+
+// react-pdf/pdfjs-dist reference browser-only globals at import time, which
+// crashes Next.js's server-side prerender — load it client-only.
+const PdfPage = dynamic(() => import("@/components/PdfPage"), {
+  ssr: false,
+  loading: () => <Skeleton className="w-[600px] h-[420px]" />,
+});
 
 type SlideViewerProps = {
-  course: CourseSource;
+  docId: string;
+  fileName: string;
   currentPage: number;
   onPageChange: (page: number) => void;
   quickNote: string;
@@ -26,11 +36,17 @@ type SlideViewerProps = {
   onSummarizeSlide: () => void;
   onExtractFlashcard: () => void;
   onAskAboutSlide: (selectedText?: string) => void;
+  onPageTextChange: (text: string) => void;
   isGenerating?: boolean;
 };
 
+function isPptx(fileName: string): boolean {
+  return fileName.toLowerCase().endsWith(".pptx");
+}
+
 export function SlideViewer({
-  course,
+  docId,
+  fileName,
   currentPage,
   onPageChange,
   quickNote,
@@ -38,35 +54,33 @@ export function SlideViewer({
   onSummarizeSlide,
   onExtractFlashcard,
   onAskAboutSlide,
+  onPageTextChange,
   isGenerating,
 }: SlideViewerProps) {
   const [zoom, setZoom] = useState(100);
+  const [numPages, setNumPages] = useState(0);
+  const [pdfError, setPdfError] = useState<string | null>(null);
+  const [pageText, setPageText] = useState("");
+  const [pageTextLoading, setPageTextLoading] = useState(false);
   const [showExtractedText, setShowExtractedText] = useState(true);
   const [selectedText, setSelectedText] = useState("");
-  // Trạng thái riêng cho hiệu ứng thẻ Flashcard 3D: đang tạo hay đã sẵn sàng
   const [flashcardState, setFlashcardState] = useState<"idle" | "generating" | "ready">("idle");
 
-  const slide = useMemo(
-    () => course.pages.find((p) => p.page === currentPage) ?? course.pages[0],
-    [course.pages, currentPage]
-  );
+  const hasDoc = docId.length > 0;
+  const pptx = isPptx(fileName);
+  const fileUrl = useMemo(() => (hasDoc ? slideFileUrl(docId) : undefined), [hasDoc, docId]);
 
-  // Dấu thời gian của lần chuyển trang gần nhất, dùng để debounce/throttle thao tác lăn chuột
   const lastWheelNavRef = useRef(0);
   const WHEEL_NAV_COOLDOWN_MS = 550;
   const WHEEL_NAV_THRESHOLD = 12;
 
-  // Lăn chuột trong khung Slide sẽ chuyển sang trang kế tiếp/trước đó (kiểu Snapping Page),
-  // đồng thời vẫn giữ nguyên các nút điều khiển Prev/Next/Zoom truyền thống bên trên.
   function handleSlideWheel(e: React.WheelEvent<HTMLDivElement>) {
-    if (Math.abs(e.deltaY) < WHEEL_NAV_THRESHOLD) return;
-
+    if (Math.abs(e.deltaY) < WHEEL_NAV_THRESHOLD || numPages === 0) return;
     const now = Date.now();
     if (now - lastWheelNavRef.current < WHEEL_NAV_COOLDOWN_MS) return;
     lastWheelNavRef.current = now;
-
     if (e.deltaY > 0) {
-      onPageChange(Math.min(course.totalPages, currentPage + 1));
+      onPageChange(Math.min(numPages, currentPage + 1));
     } else {
       onPageChange(Math.max(1, currentPage - 1));
     }
@@ -74,15 +88,73 @@ export function SlideViewer({
 
   function handleExtractFlashcardClick() {
     setFlashcardState("generating");
-    // Cho hiệu ứng xoay lật chạy một nhịp trước khi trả kết quả, mô phỏng quá trình AI "suy nghĩ"
     setTimeout(() => {
       onExtractFlashcard();
       setFlashcardState("ready");
     }, 1400);
   }
 
-  const flashcardFront = `${slide.title}?`;
-  const flashcardBack = slide.bullets[0] ?? slide.extractedText.slice(0, 100);
+  // Tải lại text đã trích xuất thật của đúng trang đang xem mỗi khi đổi tài liệu/trang.
+  useEffect(() => {
+    if (!hasDoc || pptx) {
+      setPageText("");
+      onPageTextChange("");
+      return;
+    }
+    let cancelled = false;
+    setPageTextLoading(true);
+    fetchPageText(docId, currentPage)
+      .then((res) => {
+        if (cancelled) return;
+        setPageText(res.text);
+        onPageTextChange(res.text);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setPageText("");
+        onPageTextChange("");
+      })
+      .finally(() => {
+        if (!cancelled) setPageTextLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [docId, currentPage, hasDoc, pptx]);
+
+  const flashcardFront = `Trang ${currentPage} — ${fileName || "tài liệu"}?`;
+  const flashcardBack = pageText.slice(0, 160) || "(chưa có nội dung trích xuất cho trang này)";
+
+  if (!hasDoc) {
+    return (
+      <div className="w-full h-full flex flex-col items-center justify-center gap-3 bg-slate-50/50 dark:bg-slate-950 text-center px-6">
+        <UploadCloud className="w-10 h-10 text-slate-300 dark:text-slate-700" />
+        <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
+          Chưa có tài liệu nào được nhập
+        </p>
+        <p className="text-xs text-slate-400 max-w-xs">
+          Bấm &quot;Nhập PDF/Slide&quot; ở góc trên bên phải để bắt đầu.
+        </p>
+      </div>
+    );
+  }
+
+  if (pptx) {
+    return (
+      <div className="w-full h-full flex flex-col items-center justify-center gap-3 bg-slate-50/50 dark:bg-slate-950 text-center px-6">
+        <FileWarning className="w-10 h-10 text-amber-400" />
+        <p className="text-sm font-medium text-slate-600 dark:text-slate-300">
+          Chưa hỗ trợ xem trực tiếp file .pptx
+        </p>
+        <p className="text-xs text-slate-400 max-w-sm">
+          Tài liệu &quot;{fileName}&quot; đã được đưa vào RAG và có thể hỏi/tóm tắt bình
+          thường qua khung chat bên phải — chỉ riêng phần xem trực quan từng trang
+          slide chưa hỗ trợ cho .pptx (cần chuyển đổi sang PDF trước).
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full h-full flex flex-col min-h-0 bg-slate-50/50 dark:bg-slate-950">
@@ -99,38 +171,20 @@ export function SlideViewer({
             <ChevronLeft className="w-4 h-4" />
           </motion.button>
           <span className="text-xs text-slate-500 dark:text-slate-400 w-14 text-center tabular-nums">
-            {currentPage}/{course.totalPages}
+            {currentPage}/{numPages || "…"}
           </span>
           <motion.button
             whileHover={{ scale: 1.06 }}
             whileTap={{ scale: 0.92 }}
-            onClick={() => onPageChange(Math.min(course.totalPages, currentPage + 1))}
-            disabled={currentPage >= course.totalPages}
+            onClick={() => onPageChange(Math.min(numPages || currentPage, currentPage + 1))}
+            disabled={numPages === 0 || currentPage >= numPages}
             className="w-7 h-7 rounded-lg border border-slate-200 dark:border-slate-700 disabled:opacity-30 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-300"
           >
             <ChevronRight className="w-4 h-4" />
           </motion.button>
         </div>
 
-        <div className="flex-1 flex items-center gap-1 overflow-x-auto min-w-0">
-          {course.pages.map((p) => (
-            <motion.button
-              key={p.page}
-              whileHover={{ scale: 1.12 }}
-              whileTap={{ scale: 0.9 }}
-              onClick={() => onPageChange(p.page)}
-              title={p.label}
-              className={cn(
-                "shrink-0 text-[11px] w-6 h-6 rounded-md flex items-center justify-center transition-colors",
-                p.page === currentPage
-                  ? "bg-indigo-600 text-white font-semibold"
-                  : "text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
-              )}
-            >
-              {p.page}
-            </motion.button>
-          ))}
-        </div>
+        <div className="flex-1" />
 
         <div className="flex items-center gap-1 shrink-0">
           <motion.button
@@ -152,8 +206,8 @@ export function SlideViewer({
           </motion.button>
         </div>
 
-        <span className="text-xs px-2 py-1 rounded-full bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-300 font-medium shrink-0">
-          [{slide.label}]
+        <span className="text-xs px-2 py-1 rounded-full bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-300 font-medium shrink-0 truncate max-w-[160px]">
+          {fileName}
         </span>
       </div>
 
@@ -181,35 +235,30 @@ export function SlideViewer({
 
       {/* Khung nội dung có thể cuộn */}
       <div className="flex-1 overflow-y-auto p-6">
-        {/* pageKey đổi mỗi khi sang trang -> remount PageTransition -> tự phát lại hiệu ứng Skeleton + chuyển trang */}
-        <PageTransition pageKey={slide.page}>
-          <div
-            onWheel={handleSlideWheel}
-            title="Lăn chuột để chuyển trang"
-            className="max-w-3xl mx-auto origin-top rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm hover:shadow-md transition-shadow p-8 min-h-[300px]"
-            style={{ transform: `scale(${zoom / 100})` }}
-          >
-            <p className="text-xs text-indigo-500 dark:text-indigo-400 font-medium mb-2">
-              [{slide.label}]
-            </p>
-            <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
-              {slide.title}
-            </h2>
-            <ul className="mt-4 space-y-2.5">
-              {slide.bullets.map((b, i) => (
-                <li
-                  key={i}
-                  className="flex items-start gap-2 text-sm text-slate-600 dark:text-slate-300"
-                >
-                  <span className="mt-1.5 w-1.5 h-1.5 shrink-0 rounded-full bg-indigo-500" />
-                  {b}
-                </li>
-              ))}
-            </ul>
-          </div>
-        </PageTransition>
+        <div
+          onWheel={handleSlideWheel}
+          title="Lăn chuột để chuyển trang"
+          className="max-w-3xl mx-auto origin-top rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm hover:shadow-md transition-shadow overflow-hidden flex justify-center"
+          style={{ transform: `scale(${zoom / 100})` }}
+        >
+          {pdfError ? (
+            <div className="p-8 text-center text-sm text-rose-500">{pdfError}</div>
+          ) : (
+            fileUrl && (
+              <PdfPage
+                fileUrl={fileUrl}
+                pageNumber={Math.min(currentPage, numPages || currentPage)}
+                onLoadSuccess={(n) => {
+                  setNumPages(n);
+                  setPdfError(null);
+                }}
+                onLoadError={() => setPdfError("Không tải được file PDF từ backend.")}
+              />
+            )
+          )}
+        </div>
 
-        {/* Khay xem text đã trích xuất */}
+        {/* Khay xem text đã trích xuất (real, từ backend) */}
         <details
           open={showExtractedText}
           onToggle={(e) => setShowExtractedText(e.currentTarget.open)}
@@ -219,15 +268,23 @@ export function SlideViewer({
             Xem text đã trích xuất (để bôi đen hỏi AI)
           </summary>
           <div className="px-4 pb-4">
-            <p
-              onMouseUp={() => {
-                const sel = window.getSelection()?.toString().trim();
-                setSelectedText(sel && sel.length > 0 ? sel : "");
-              }}
-              className="select-text whitespace-pre-wrap text-[13px] text-slate-600 dark:text-slate-300 leading-relaxed"
-            >
-              {slide.extractedText}
-            </p>
+            {pageTextLoading ? (
+              <div className="space-y-2">
+                <Skeleton className="h-3.5 w-full" />
+                <Skeleton className="h-3.5 w-5/6" />
+                <Skeleton className="h-3.5 w-3/4" />
+              </div>
+            ) : (
+              <p
+                onMouseUp={() => {
+                  const sel = window.getSelection()?.toString().trim();
+                  setSelectedText(sel && sel.length > 0 ? sel : "");
+                }}
+                className="select-text whitespace-pre-wrap text-[13px] text-slate-600 dark:text-slate-300 leading-relaxed"
+              >
+                {pageText || "Trang này không có text trích xuất được (có thể là slide dạng ảnh)."}
+              </p>
+            )}
             <AnimatePresence>
               {selectedText && (
                 <motion.div
@@ -257,7 +314,7 @@ export function SlideViewer({
             onClick={() => onAskAboutSlide()}
             className="flex items-center gap-1.5 text-sm font-medium px-3 py-2 rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-950"
           >
-            <MessageCircleQuestion className="w-4 h-4" /> Hỏi về Slide này ([{slide.label}])
+            <MessageCircleQuestion className="w-4 h-4" /> Hỏi về trang {currentPage}
           </motion.button>
           <motion.button
             whileHover={{ scale: 1.02 }}
@@ -295,56 +352,5 @@ export function SlideViewer({
         />
       )}
     </div>
-  );
-}
-
-// Bọc nội dung trang trong một khoảng Skeleton ngắn rồi chuyển cảnh mượt sang nội dung thật.
-// Dùng "key" để ép remount mỗi khi sang trang mới, nhờ đó trạng thái loading luôn khởi tạo lại
-// mà không cần gọi setState trực tiếp trong effect (tránh cascading render).
-function PageTransition({ pageKey, children }: { pageKey: number; children: React.ReactNode }) {
-  return (
-    <AnimatePresence mode="wait">
-      <PageTransitionFrame key={pageKey}>{children}</PageTransitionFrame>
-    </AnimatePresence>
-  );
-}
-
-function PageTransitionFrame({ children }: { children: React.ReactNode }) {
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 260);
-    return () => clearTimeout(timer);
-  }, []);
-
-  if (isLoading) {
-    return (
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="max-w-3xl mx-auto rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm p-8 min-h-[300px] space-y-4"
-      >
-        <Skeleton className="h-3 w-20" />
-        <Skeleton className="h-6 w-2/3" />
-        <div className="space-y-2.5 pt-2">
-          <Skeleton className="h-3.5 w-full" />
-          <Skeleton className="h-3.5 w-5/6" />
-          <Skeleton className="h-3.5 w-3/4" />
-        </div>
-      </motion.div>
-    );
-  }
-
-  return (
-    // Hiệu ứng chuyển trang mượt như lật slide thật: trang mới trượt vào + mờ dần
-    <motion.div
-      initial={{ opacity: 0, x: 24 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: -24 }}
-      transition={{ duration: 0.28, ease: "easeOut" }}
-    >
-      {children}
-    </motion.div>
   );
 }

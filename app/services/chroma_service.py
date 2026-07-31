@@ -117,6 +117,32 @@ class ChromaService:
             )
         return retrieved
 
+    def get_page_chunks(self, *, slide_id: str, page_number: int) -> list[RetrievedChunk]:
+        results = self.collection.get(
+            where={"$and": [{"slide_id": {"$eq": slide_id}}, {"page_number": {"$eq": page_number}}]},
+            include=["documents", "metadatas"],
+        )
+
+        ids = results.get("ids") or []
+        documents = results.get("documents") or []
+        metadatas = results.get("metadatas") or []
+
+        retrieved: list[RetrievedChunk] = []
+        for chunk_id, document, metadata in zip(ids, documents, metadatas, strict=False):
+            normalized_metadata = self._normalize_metadata(metadata)
+            retrieved.append(
+                RetrievedChunk(
+                    chunk_id=str(chunk_id),
+                    text=str(document),
+                    page_number=int(normalized_metadata.get("page_number", 0)),
+                    chunk_index=int(normalized_metadata.get("chunk_index", 0)),
+                    distance=0.0,
+                    score=1.0,
+                )
+            )
+        retrieved.sort(key=lambda chunk: chunk.chunk_index)
+        return retrieved
+
     def delete_slide(self, slide_id: str) -> None:
         self.collection.delete(where={"slide_id": {"$eq": slide_id}})
 
