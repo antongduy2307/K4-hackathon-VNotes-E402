@@ -1,6 +1,15 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+# Must run before anything below reads OPENAI_API_KEY from the process
+# environment — Settings (app/core/config.py) has no such field, and
+# agent.py's OpenAIProvider calls os.getenv() directly, so a .env file sitting
+# next to the code does nothing on its own unless something loads it in.
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
