@@ -27,8 +27,8 @@ TOOL_FUNCTIONS = {
 # conversation_turns must be the real recorded session log, not something
 # the model retypes from memory.
 SESSION_INJECTED_ARGS: dict[str, list[str]] = {
-    "rag_query": ["doc_id"],
-    "rag_summary": ["doc_id"],
+    "rag_query": ["user_id", "slide_id"],
+    "rag_summary": ["user_id", "slide_id"],
     "note_capture": ["doc_id", "conversation_turns"],
 }
 

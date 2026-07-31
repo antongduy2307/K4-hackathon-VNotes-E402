@@ -57,33 +57,39 @@ class RagToolHttpContractTests(unittest.TestCase):
     """
 
     @patch("tools.rag_query.tool.post_json")
-    def test_rag_query_calls_chat_endpoint_with_doc_id_and_question(self, mock_post: Mock) -> None:
+    def test_rag_query_calls_rag_query_endpoint_with_user_and_slide(self, mock_post: Mock) -> None:
         mock_post.return_value = {"answer": "42", "sources": [{"page_start": 1, "page_end": 1}]}
-        result = rag_query(doc_id="doc1", query="what is it?")
-        mock_post.assert_called_once_with("/chat", {"doc_id": "doc1", "question": "what is it?"})
+        result = rag_query(user_id="u1", slide_id="s1", query="what is it?")
+        mock_post.assert_called_once_with(
+            "/api/v1/rag/query",
+            {"user_id": "u1", "slide_id": "s1", "question": "what is it?"},
+        )
         self.assertEqual(result["answer"], "42")
         self.assertEqual(result["sources"], [{"page_start": 1, "page_end": 1}])
 
     @patch("tools.rag_query.tool.post_json", side_effect=ConnectionError("backend down"))
     def test_rag_query_returns_error_dict_instead_of_raising(self, _mock_post: Mock) -> None:
-        result = rag_query(doc_id="doc1", query="q")
+        result = rag_query(user_id="u1", slide_id="s1", query="q")
         self.assertEqual(result["tool"], "rag_query")
         self.assertIn("error", result)
 
     def test_rag_query_missing_args_is_handled_locally_without_http_call(self) -> None:
-        result = rag_query(doc_id="", query="q")
+        result = rag_query(user_id="", slide_id="s1", query="q")
         self.assertEqual(result["error"], "missing_argument")
 
-    @patch("tools.rag_summary.tool.get_json")
-    def test_rag_summary_calls_documents_summary_endpoint(self, mock_get: Mock) -> None:
-        mock_get.return_value = {"summary": "tóm tắt"}
-        result = rag_summary(doc_id="doc1")
-        mock_get.assert_called_once_with("/documents/doc1/summary")
+    @patch("tools.rag_summary.tool.post_json")
+    def test_rag_summary_calls_rag_query_endpoint_for_summary(self, mock_post: Mock) -> None:
+        mock_post.return_value = {"answer": "tóm tắt"}
+        result = rag_summary(user_id="u1", slide_id="s1")
+        mock_post.assert_called_once_with(
+            "/api/v1/rag/query",
+            {"user_id": "u1", "slide_id": "s1", "question": "Tóm tắt nội dung slide này"},
+        )
         self.assertEqual(result["summary"], "tóm tắt")
 
-    @patch("tools.rag_summary.tool.get_json", side_effect=ConnectionError("backend down"))
-    def test_rag_summary_returns_error_dict_instead_of_raising(self, _mock_get: Mock) -> None:
-        result = rag_summary(doc_id="doc1")
+    @patch("tools.rag_summary.tool.post_json", side_effect=ConnectionError("backend down"))
+    def test_rag_summary_returns_error_dict_instead_of_raising(self, _mock_post: Mock) -> None:
+        result = rag_summary(user_id="u1", slide_id="s1")
         self.assertEqual(result["tool"], "rag_summary")
         self.assertIn("error", result)
 
