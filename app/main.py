@@ -29,6 +29,12 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    # pdfjs (react-pdf) streams the PDF from GET /slides/{id}/file using HTTP
+    # Range requests and inspects these response headers to manage that —
+    # none of them are on the CORS default-exposed list, so without this the
+    # browser silently hides them from JS on a cross-origin request (frontend
+    # dev server on a different port than the API) and the PDF fails to load.
+    expose_headers=["Content-Range", "Content-Length", "Accept-Ranges"],
 )
 
 

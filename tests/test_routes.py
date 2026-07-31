@@ -238,6 +238,9 @@ def test_get_slide_file_streams_the_stored_pdf_bytes(tmp_path: Path) -> None:
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/pdf"
     assert response.content == b"%PDF-1.4 fake content"
+    # Must be "inline", not the FileResponse default "attachment" — this is a
+    # viewer endpoint (react-pdf fetches it), not a download-this-file endpoint.
+    assert response.headers["content-disposition"].startswith("inline")
 
 
 def test_get_slide_file_404_when_slide_missing() -> None:
