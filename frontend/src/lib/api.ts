@@ -80,19 +80,3 @@ export async function askChat(slideId: string, question: string): Promise<RagQue
   });
   return parseJson(res, "Chat");
 }
-
-// URL để render trực tiếp (vd <Document file={slideFileUrl(id)} /> của react-pdf) — không phải fetch JSON.
-export function slideFileUrl(slideId: string): string {
-  return `${API_BASE}${API_PREFIX}/slides/${slideId}/file`;
-}
-
-export type PageTextResponse = {
-  slide_id: string;
-  page_number: number;
-  text: string;
-};
-
-export async function fetchPageText(slideId: string, pageNumber: number): Promise<PageTextResponse> {
-  const res = await fetch(`${API_BASE}${API_PREFIX}/slides/${slideId}/pages/${pageNumber}`);
-  return parseJson(res, "Get page text");
-}

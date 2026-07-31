@@ -5,13 +5,32 @@ import type {
   ReviewStats,
   SavedFlashcard,
   SavedNote,
+  SlidePage,
 } from "./types";
 
-// docId rỗng = trạng thái ban đầu, chưa upload gì — SlideViewer hiển thị màn
-// hình "chưa có tài liệu" thay vì cố render PDF không tồn tại.
+function buildPages(total: number): SlidePage[] {
+  return Array.from({ length: total }, (_, i) => {
+    const page = i + 1;
+    return {
+      page,
+      label: `D1-p${page}`,
+      title: `Slide ${page}: Kiến trúc hệ thống RAG`,
+      bullets: [
+        "Tổng quan pipeline: Ingest -> Chunk -> Embed -> Retrieve -> Generate",
+        "Vai trò của vector store trong truy xuất ngữ cảnh",
+        "Chiến lược đánh giá chất lượng câu trả lời",
+      ],
+      extractedText:
+        "Đây là nội dung văn bản được trích xuất từ slide bài giảng, học viên có thể bôi đen đoạn text này để hỏi AI trực tiếp về chi tiết liên quan tới kiến trúc RAG, cách chunking văn bản và cách đánh giá độ chính xác của hệ thống.",
+    };
+  });
+}
+
 export const mockCourse: CourseSource = {
-  docId: "",
-  fileName: "",
+  docId: "demo-doc-001",
+  fileName: "AI-Slide-Tutor-BaiGiang-D1.pdf",
+  totalPages: 29,
+  pages: buildPages(29),
 };
 
 export const mockContentTree: ContentNode[] = [

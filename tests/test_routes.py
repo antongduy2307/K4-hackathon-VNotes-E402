@@ -19,18 +19,12 @@ from app.dependencies import (
 from app.models.domain import RetrievedChunk, SlideRecord
 
 
-def make_record(
-    slide_id: str = "s1",
-    *,
-    status: str = "ready",
-    stored_path: Path = Path("data/uploads/ai.pdf"),
-    original_filename: str = "ai.pdf",
-) -> SlideRecord:
+def make_record(slide_id: str = "s1", *, status: str = "ready") -> SlideRecord:
     return SlideRecord(
         slide_id=slide_id,
         title="AI slide",
-        original_filename=original_filename,
-        stored_path=stored_path,
+        original_filename="ai.pdf",
+        stored_path=Path("data/uploads/ai.pdf"),
         status=status,
         chunk_count=3,
         created_at=datetime.now(UTC),
@@ -70,15 +64,11 @@ class FakeRAGService:
 
 
 class FakeChroma:
-    def __init__(self, page_chunks: list[RetrievedChunk] | None = None) -> None:
+    def __init__(self) -> None:
         self.deleted: str | None = None
-        self.page_chunks = page_chunks if page_chunks is not None else []
 
     def delete_slide(self, slide_id: str) -> None:
         self.deleted = slide_id
-
-    def get_page_chunks(self, *, slide_id: str, page_number: int) -> list[RetrievedChunk]:
-        return self.page_chunks
 
 
 class FakeFileService:
@@ -224,74 +214,3 @@ def test_rag_query_rejects_missing_slide_id() -> None:
     response = client.post("/api/v1/rag/query", json={"question": "q"})
 
     assert response.status_code == 422
-
-
-def test_get_slide_file_streams_the_stored_pdf_bytes(tmp_path: Path) -> None:
-    pdf_path = tmp_path / "s1.pdf"
-    pdf_path.write_bytes(b"%PDF-1.4 fake content")
-    repository = FakeRepository({"s1": make_record("s1", stored_path=pdf_path)})
-    app, _repo, _chroma = make_app(repository=repository)
-    client = TestClient(app)
-
-    response = client.get("/api/v1/slides/s1/file")
-
-    assert response.status_code == 200
-    assert response.headers["content-type"] == "application/pdf"
-    assert response.content == b"%PDF-1.4 fake content"
-
-
-def test_get_slide_file_404_when_slide_missing() -> None:
-    app, _repo, _chroma = make_app(repository=FakeRepository({}))
-    client = TestClient(app)
-
-    response = client.get("/api/v1/slides/unknown/file")
-
-    assert response.status_code == 404
-
-
-def test_get_slide_file_404_when_file_missing_on_disk(tmp_path: Path) -> None:
-    missing_path = tmp_path / "gone.pdf"
-    repository = FakeRepository({"s1": make_record("s1", stored_path=missing_path)})
-    app, _repo, _chroma = make_app(repository=repository)
-    client = TestClient(app)
-
-    response = client.get("/api/v1/slides/s1/file")
-
-    assert response.status_code == 404
-
-
-def test_get_slide_page_text_joins_chunks_in_order() -> None:
-    repository = FakeRepository({"s1": make_record("s1")})
-    chroma = FakeChroma(page_chunks=[
-        RetrievedChunk(chunk_id="s1:0", text="Phần đầu", page_number=3, chunk_index=0, distance=0.0, score=1.0),
-        RetrievedChunk(chunk_id="s1:1", text="Phần sau", page_number=3, chunk_index=1, distance=0.0, score=1.0),
-    ])
-    app, _repo, _chroma = make_app(repository=repository, chroma=chroma)
-    client = TestClient(app)
-
-    response = client.get("/api/v1/slides/s1/pages/3")
-
-    assert response.status_code == 200
-    body = response.json()
-    assert body["page_number"] == 3
-    assert body["text"] == "Phần đầu\n\nPhần sau"
-
-
-def test_get_slide_page_text_404_when_slide_missing() -> None:
-    app, _repo, _chroma = make_app(repository=FakeRepository({}))
-    client = TestClient(app)
-
-    response = client.get("/api/v1/slides/unknown/pages/1")
-
-    assert response.status_code == 404
-
-
-def test_get_slide_page_text_empty_when_no_chunks_for_page() -> None:
-    repository = FakeRepository({"s1": make_record("s1")})
-    app, _repo, _chroma = make_app(repository=repository, chroma=FakeChroma(page_chunks=[]))
-    client = TestClient(app)
-
-    response = client.get("/api/v1/slides/s1/pages/99")
-
-    assert response.status_code == 200
-    assert response.json()["text"] == ""

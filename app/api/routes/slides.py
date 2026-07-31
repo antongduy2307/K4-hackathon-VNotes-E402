@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
-from fastapi.responses import FileResponse
 
 from app.core.exceptions import SlideNotFoundError
 from app.dependencies import (
@@ -13,23 +12,13 @@ from app.dependencies import (
     get_slide_repository,
 )
 from app.models.domain import SlideRecord
-from app.models.schemas import (
-    DeleteSlideResponse,
-    PageTextResponse,
-    SlideResponse,
-    SlideUploadResponse,
-)
+from app.models.schemas import DeleteSlideResponse, SlideResponse, SlideUploadResponse
 from app.repositories.slide_repository import SlideRepository
 from app.services.chroma_service import ChromaService
 from app.services.file_service import FileService
 from app.services.ingestion_service import IngestionService
 
 router = APIRouter(prefix="/slides", tags=["slides"])
-
-_MEDIA_TYPES = {
-    ".pdf": "application/pdf",
-    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-}
 
 
 def _to_response(record: SlideRecord) -> SlideResponse:
@@ -75,37 +64,6 @@ def get_slide(
     if record is None:
         raise SlideNotFoundError("Không tìm thấy slide")
     return _to_response(record)
-
-
-@router.get("/{slide_id}/file")
-def get_slide_file(
-    slide_id: str,
-    repository: SlideRepository = Depends(get_slide_repository),
-) -> FileResponse:
-    record = repository.get(slide_id)
-    if record is None:
-        raise SlideNotFoundError("Không tìm thấy slide")
-    if not record.stored_path.exists():
-        raise SlideNotFoundError("Không tìm thấy file slide trên server")
-
-    media_type = _MEDIA_TYPES.get(record.stored_path.suffix.lower(), "application/octet-stream")
-    return FileResponse(record.stored_path, media_type=media_type, filename=record.original_filename)
-
-
-@router.get("/{slide_id}/pages/{page_number}", response_model=PageTextResponse)
-def get_slide_page_text(
-    slide_id: str,
-    page_number: int,
-    repository: SlideRepository = Depends(get_slide_repository),
-    chroma: ChromaService = Depends(get_chroma_service),
-) -> PageTextResponse:
-    record = repository.get(slide_id)
-    if record is None:
-        raise SlideNotFoundError("Không tìm thấy slide")
-
-    chunks = chroma.get_page_chunks(slide_id=slide_id, page_number=page_number)
-    text = "\n\n".join(chunk.text for chunk in chunks)
-    return PageTextResponse(slide_id=slide_id, page_number=page_number, text=text)
 
 
 @router.delete("/{slide_id}", response_model=DeleteSlideResponse)
