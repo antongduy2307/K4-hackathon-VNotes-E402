@@ -1,7 +1,10 @@
 # VLearn Tutor Agent
 
-Đứng độc lập với `backend/` (RAG service) — chỉ gọi qua HTTP, không import code
-của `backend/`.
+Đứng độc lập với `app/` (RAG backend, ở gốc repo) — chỉ gọi qua HTTP
+(`VLEARN_BACKEND_URL`), không import code của `app/`. Ngược lại, `app/`
+**có** import trực tiếp `agent.py`/`providers/openai_provider.py` (xem
+`app/services/rag_service.py::_answer_with_agent`) để tự tổng hợp câu trả
+lời — nghĩa là đổi vị trí/tên các file đó phải sửa cả bên `app/`.
 
 Kiến trúc phiên: **mỗi tài liệu là một phiên (session) riêng biệt, với lịch sử
 hội thoại riêng biệt** — không có chuyện nhiều tài liệu dùng chung một phiên,
@@ -12,38 +15,45 @@ Model chỉ gọi `rag_query(query)`, `rag_summary()`, `note_capture()` — khô
 số định danh tài liệu; `apply_session_args()` (`tools/__init__.py`) tự điền
 `doc_id` (và `conversation_turns` cho `note_capture`) trước khi hàm thật chạy.
 
-Giao thức: agent gọi RAG qua `POST /chat` hoặc `GET /documents/{doc_id}/summary`,
-rồi tổng hợp câu trả lời cuối cùng (trích trang nguồn) để gửi lại người dùng.
-
-Cấu trúc mượn nguyên khung đã chạy được trong `example/` (agent.py / chat.py /
-tools contract / run_eval.py) — chỉ thay tool và system prompt cho đúng domain
-VLearn.
+Giao thức: agent gọi RAG qua `POST /api/v1/rag/query` (`{slide_id, question}`)
+hoặc `POST /api/v1/rag/summarize` (`{slide_id}`), rồi tổng hợp câu trả lời
+cuối cùng (trích trang nguồn từ `sources[].page_number`) để gửi lại người
+dùng. `doc_id` phía agent = `slide_id` phía backend, cùng một giá trị, khác
+tên do lịch sử phát triển hai bên độc lập.
 
 ## Cấu trúc
 
 ```
 agent/
-  agent.py           một vòng gọi model + tool (dùng cho eval routing)
+  agent.py           một vòng gọi model + tool (dùng cho eval routing, và được app/ import trực tiếp)
   chat.py            vòng lặp đầy đủ: gọi tool -> feed kết quả lại model -> câu trả lời cuối, có transcript
-  run_eval.py         eval độ chính xác routing tool + args (giống backend, tách file riêng)
+  env_loader.py       nạp .env (dùng chung bởi mọi entrypoint)
+  versioning.py       hash system_prompt.md + tools.yaml thành artifact_version, để so sánh giữa các lần chỉnh prompt
+  run_eval.py         eval độ chính xác routing tool + args
   eval_guardrail.py   eval hành vi cuối: chống prompt-injection cấy trong tài liệu, chống bịa khi RAG rỗng
+  export_api.py       FastAPI: 3 endpoint cho nút "Lưu Anki"/"Lưu Notion"/"Lưu Obsidian" trên UI — KHÔNG qua agent/LLM
   tools/
-    rag_query/        gọi POST {VLEARN_BACKEND_URL}/chat (doc_id do session gắn)
-    rag_summary/       gọi GET {VLEARN_BACKEND_URL}/documents/{doc_id}/summary (doc_id do session gắn)
+    rag_query/         gọi POST {VLEARN_BACKEND_URL}/api/v1/rag/query (doc_id do session gắn)
+    rag_summary/        gọi POST {VLEARN_BACKEND_URL}/api/v1/rag/summarize (doc_id do session gắn)
     note_capture/       lọc lịch sử hội thoại thành note (loại off-topic + tóm tắt toàn slide)
-    clarify/            hỏi lại, dừng chờ user (không gọi RAG)
-  artifacts/
-    system_prompt.md   routing rules + guardrail + trust boundary
-    tools.yaml          khai báo tool cho model (OpenAI function-calling schema — không có doc_id)
-  data/
-    eval_base.json      case routing/clarify/out-of-scope/multi-turn (trong CÙNG 1 phiên/tài liệu)
-    eval_guardrail.json case guardrail (mock tool result, chấm câu trả lời cuối)
+    clarify/             hỏi lại, dừng chờ user (không gọi RAG)
+  providers/
+    openai_provider.py  wrapper OpenAI Chat Completions, chuẩn hoá tool_calls
   export/
     anki_export.py      note_capture output -> file .apkg (genanki, offline, không cần Anki app)
     notion_export.py     note_capture output -> ý chính, append vào 1 trang Notion có sẵn (Notion API thật)
     obsidian_export.py   note_capture output -> file .md (frontmatter + ý chính + Q&A), không API/auth
-  export_api.py        FastAPI: 3 endpoint cho nút "Lưu Anki"/"Lưu Notion"/"Lưu Obsidian" trên UI — KHÔNG qua agent/LLM
-  tests/               test không cần API key (mock HTTP call tới backend/Notion)
+  artifacts/
+    system_prompt.md    routing rules + guardrail + trust boundary
+    tools.yaml           khai báo tool cho model (OpenAI function-calling schema — không có doc_id)
+  data/
+    eval_base.json       case routing/clarify/out-of-scope/multi-turn (trong CÙNG 1 phiên/tài liệu)
+    eval_guardrail.json  case guardrail (mock tool result, chấm câu trả lời cuối)
+  samples/
+    stream.pdf           PDF mẫu thật để test ingest/chat/export tay, không phải fixture cho pytest
+  tests/                 test không cần API key (mock HTTP call tới backend/Notion)
+  runs/                  output của run_eval.py (gitignore, trừ .gitkeep)
+  transcripts/           output của chat.py (gitignore, trừ .gitkeep)
 ```
 
 ## Setup
@@ -53,18 +63,19 @@ cd agent
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements-dev.txt
-copy .env.example .env   # điền OPENAI_API_KEY; VLEARN_BACKEND_URL trỏ tới backend đang chạy
+copy .env.example .env   # điền OPENAI_API_KEY; VLEARN_BACKEND_URL trỏ tới app/ đang chạy (mặc định http://localhost:8000)
 ```
 
-## Chạy thử (cần backend đang chạy ở VLEARN_BACKEND_URL)
+## Chạy thử (cần `app/` đang chạy — `uvicorn app.main:app` ở gốc repo)
 
 ```bash
-python chat.py --version v0 --doc-id <doc_id thật đã ingest ở backend>
+python chat.py --version v0 --doc-id <slide_id thật đã upload qua /api/v1/slides/upload>
 ```
 
 `--doc-id` cố định cho suốt phiên chat này (đúng 1 tài liệu). Gõ câu hỏi bình
 thường, không cần tự chèn context — ví dụ: "Tóm tắt tài liệu này giúp mình."
-Transcript lưu ở `transcripts/*.transcript.json`.
+Transcript lưu ở `transcripts/*.transcript.json`. Có sẵn `samples/stream.pdf`
+để upload thử qua `POST /api/v1/slides/upload` nếu chưa có tài liệu nào.
 
 ## Eval routing + args (không cần backend thật đang chạy — tool lỗi vẫn được chấm là bằng chứng)
 
@@ -89,9 +100,9 @@ không có dữ liệu).
 
 ## Export (app-driven, không qua LLM)
 
-`note_capture` chỉ lọc + trả note có cấu trúc. Export ra Anki/Notion là hành
-động người dùng bấm nút trên UI, gọi thẳng `export_api.py` với đúng list note
-đó — không để model tự quyết định ghi ra hệ thống ngoài.
+`note_capture` chỉ lọc + trả note có cấu trúc. Export ra Anki/Notion/Obsidian
+là hành động người dùng bấm nút trên UI, gọi thẳng `export_api.py` với đúng
+list note đó — không để model tự quyết định ghi ra hệ thống ngoài.
 
 ```bash
 uvicorn export_api:app --reload --port 8100
@@ -137,39 +148,30 @@ Mock HTTP call bằng `unittest.mock.patch`, kiểm tra: tool registry khớp
 `tools.yaml`, `eval_base.json`/`eval_guardrail.json` đúng shape, `rag_query`/
 `rag_summary` không bao giờ raise exception (luôn trả dict lỗi) khi backend
 sập, logic lọc của `note_capture` (giữ đúng câu hỏi chi tiết, loại whole-doc
-summary + off-topic), `anki_export` sinh file `.apkg` hợp lệ (zip thật, deck_id
-ổn định theo `doc_id`), `notion_export` gọi đúng payload và không raise khi
-Notion API lỗi/thiếu config.
+summary + off-topic), `anki_export`/`obsidian_export` sinh nội dung hợp lệ
+theo schema `page_number` thật, `notion_export` gọi đúng payload và không
+raise khi Notion API lỗi/thiếu config.
 
-## Nhật ký eval thật đã chạy (tham khảo cách điều chỉnh prompt từ kết quả)
+## Đã verify sống với `app/` thật (không phải mock)
 
-- v0: 8/11 case routing pass (72.7%) — do lúc đó `doc_id` còn được nhúng vào
-  text mỗi lượt (`NGỮ CẢNH: doc_id=...`), model xử lý multi-turn không ổn định.
-- v1: sau khi vá system_prompt (rule carryover/không-gọi-lại-summary) -> 10/11
-  (90.9%), nhưng vẫn còn 1 case nhạy cảm với cách eval dồn nhiều turn vào 1
-  message.
-- Kiến trúc hiện tại (tài liệu này) loại bỏ hẳn nguyên nhân gốc: `doc_id`
-  không còn là thứ model phải đọc/carry/suy đoán từ text nữa — nó là hằng số
-  của phiên, do orchestrator gắn. Cần chạy lại `run_eval.py`/`eval_guardrail.py`
-  với bộ case mới để có số liệu mới nhất (chưa chạy tại thời điểm viết dòng
-  này — chạy `python run_eval.py --version v2` để lấy kết quả).
+Upload PDF thật → `rag_summary`/`rag_query` qua agent trả lời đúng, có trích
+trang → `note_capture` lọc đúng → export Anki/Obsidian/Notion đều thành công.
+Chi tiết root cause của 1 bug thật đã sửa (schema `sources`, endpoint
+`rag_summary`, và một bug retrieval ở `app/services/chroma_service.py` không
+thuộc phạm vi agent) — xem lịch sử commit.
 
-## Việc còn lại / TODO cho version sau
+## Việc còn lại / TODO
 
 - `eval_guardrail.py` và `run_eval.py` đều cần `OPENAI_API_KEY` thật để chạy —
   chỉ `pytest` chạy được hoàn toàn offline.
-- **Bug thật ở `backend/` phát hiện khi test end-to-end (không phải code
-  agent):** `summarize_document` (map-reduce, nhiều chunk) chạy hàng chục lệnh
-  OpenAI tuần tự đồng bộ bên trong route `async def` mà không offload sang
-  thread — chặn cứng cả FastAPI worker trong lúc xử lý, khiến các request khác
-  (kể cả `/chat` đơn giản) xếp hàng và dễ timeout phía agent. Cần backend sửa
-  bằng `run_in_threadpool`/`asyncio.to_thread` trước khi demo tài liệu dài.
 - `export/notion_export.py` gọi Notion API tuần tự từng note (không batch) —
   đủ nhanh cho demo vài chục note, nếu về sau nhiều note nên cân nhắc song song
   hoá hoặc rate-limit backoff.
 - `tools/_shared.py` dùng `requests` đồng bộ, timeout cố định 30s — nếu
-  backend RAG chậm (map-reduce summary dài), có thể cần tăng timeout hoặc
-  polling job riêng.
-- Backend/API thật cần đảm bảo mỗi phiên chat (mỗi tài liệu) có `doc_id` cố
-  định được truyền vào lúc khởi tạo agent (giống `--doc-id` của `chat.py`),
-  không phải lấy từ nội dung tin nhắn.
+  backend RAG chậm, có thể cần tăng timeout hoặc polling job riêng.
+- Retrieval với câu hỏi ngắn/viết tắt (vd "PAIR framework") đôi khi miss chunk
+  đúng dù nội dung có tồn tại — vấn đề chất lượng embedding/top_k phía `app/`,
+  chưa tối ưu.
+- Frontend (`frontend/`) hiện gọi API cũ (`/documents`, `/chat`, `doc_id`
+  trong `sources`) — chưa khớp `app/` thật. Việc kết nối frontend sẽ làm ở
+  bước sau, có confirm riêng.
