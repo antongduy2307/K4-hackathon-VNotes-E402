@@ -45,3 +45,9 @@ class RAGQueryResponse(RetrieveResponse):
 class DeleteSlideResponse(BaseModel):
     slide_id: str
     deleted: bool
+
+
+class PageTextResponse(BaseModel):
+    slide_id: str
+    page_number: int
+    text: str

@@ -58,6 +58,32 @@ def test_get_slide_chunks_respects_top_k_limit(tmp_path: Path) -> None:
     assert len(results) == 2
 
 
+def test_get_page_chunks_filters_by_slide_and_page_and_orders_by_chunk_index(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+    chunks = [
+        make_chunk("slide-1", 2, 3, "phan cuoi trang 3"),
+        make_chunk("slide-1", 1, 3, "phan giua trang 3"),
+        make_chunk("slide-1", 0, 3, "phan dau trang 3"),
+        make_chunk("slide-1", 3, 4, "trang khac, khong lay"),
+        make_chunk("slide-2", 0, 3, "slide khac, khong lay"),
+    ]
+    service.add_chunks(chunks, embeddings=[[float(i), 0.0] for i in range(5)])
+
+    results = service.get_page_chunks(slide_id="slide-1", page_number=3)
+
+    assert [r.chunk_id for r in results] == ["slide-1:0", "slide-1:1", "slide-1:2"]
+    assert [r.text for r in results] == ["phan dau trang 3", "phan giua trang 3", "phan cuoi trang 3"]
+
+
+def test_get_page_chunks_returns_empty_for_page_with_no_chunks(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+    service.add_chunks([make_chunk("slide-1", 0, 1, "chi co trang 1")], embeddings=[[0.1, 0.1]])
+
+    results = service.get_page_chunks(slide_id="slide-1", page_number=99)
+
+    assert results == []
+
+
 def test_delete_slide_removes_only_that_slides_chunks(tmp_path: Path) -> None:
     service = make_service(tmp_path)
     chunks = [

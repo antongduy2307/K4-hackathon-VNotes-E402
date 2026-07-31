@@ -4,19 +4,12 @@ export type ReviewStats = {
   in7Days: number;
 };
 
-export type SlidePage = {
-  page: number;
-  label: string;
-  title: string;
-  bullets: string[];
-  extractedText: string;
-};
-
+// Nội dung từng trang lấy trực tiếp từ backend (PDF render qua react-pdf +
+// text trích xuất qua GET /slides/{id}/pages/{n}) — không còn state tĩnh ở
+// đây, xem SlideViewer.tsx.
 export type CourseSource = {
   docId: string;
   fileName: string;
-  totalPages: number;
-  pages: SlidePage[];
 };
 
 export type ContentNode = {
