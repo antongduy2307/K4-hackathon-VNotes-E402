@@ -17,7 +17,6 @@ class PageText:
 class DocumentChunk:
     chunk_id: str
     slide_id: str
-    user_id: str
     page_number: int
     chunk_index: int
     text: str
@@ -38,7 +37,6 @@ class SlideRecord(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     slide_id: str
-    user_id: str
     title: str
     original_filename: str
     stored_path: Path

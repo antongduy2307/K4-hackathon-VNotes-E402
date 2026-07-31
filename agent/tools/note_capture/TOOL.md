@@ -23,7 +23,7 @@ underlying function runs. `conversation_turns` is a list of exchange records,
 each shaped like:
 
 ```json
-{"question": "...", "answer": "...", "tool_used": "rag_query", "sources": [{"page_start": 3, "page_end": 4}]}
+{"question": "...", "answer": "...", "tool_used": "rag_query", "sources": [{"page_number": 3}, {"page_number": 4}]}
 ```
 
 **Important: the model must not author this list from memory.** The calling

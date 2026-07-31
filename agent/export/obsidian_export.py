@@ -24,13 +24,11 @@ _TITLE_FRONTMATTER_RE = re.compile(r'^title:\s*"(.*)"\s*$', re.MULTILINE)
 
 def _format_source(note: dict[str, Any]) -> str:
     sources = note.get("sources") or []
-    if not sources:
+    page_numbers = sorted({s["page_number"] for s in sources if "page_number" in s})
+    if not page_numbers:
         return ""
-    pages = ", ".join(
-        f"tr.{s['page_start']}" if s["page_start"] == s["page_end"] else f"tr.{s['page_start']}-{s['page_end']}"
-        for s in sources
-    )
-    return f" *(nguồn: {pages})*"
+    pages = ", ".join(str(p) for p in page_numbers)
+    return f" *(nguồn: tr.{pages})*"
 
 
 def _qa_block(note: dict[str, Any]) -> str:

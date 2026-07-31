@@ -10,9 +10,9 @@ side_effect: false
 ---
 # rag_summary
 
-Calls the RAG backend's `GET /documents/{doc_id}/summary` and returns a
-full-document summary (already map-reduced by the backend if the document is
-long) for the document open in this session.
+Calls the RAG backend's `POST /api/v1/rag/summarize` with `{slide_id}` and
+returns a full-document summary plus the source chunks it was grounded on,
+for the document open in this session.
 
 `doc_id` is fixed for the whole session and is injected by the orchestrator,
 never supplied by the model — this tool takes no model-facing arguments.

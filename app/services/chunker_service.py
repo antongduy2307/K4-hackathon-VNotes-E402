@@ -17,7 +17,6 @@ class ChunkerService:
         *,
         pages: list[PageText],
         slide_id: str,
-        user_id: str,
         source_filename: str,
     ) -> list[DocumentChunk]:
         chunks: list[DocumentChunk] = []
@@ -29,7 +28,6 @@ class ChunkerService:
                     DocumentChunk(
                         chunk_id=f"{slide_id}:{global_index}",
                         slide_id=slide_id,
-                        user_id=user_id,
                         page_number=page.page_number,
                         chunk_index=global_index,
                         text=piece,

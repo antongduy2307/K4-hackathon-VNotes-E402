@@ -11,8 +11,8 @@ from export.notion_export import consolidate_notes, extract_page_id, push_notes_
 from export.obsidian_export import build_obsidian_markdown, export_obsidian_to_file, parse_existing_note
 
 SAMPLE_NOTES = [
-    {"question": "Gradient descent là gì?", "answer": "Thuật toán tối ưu lặp.", "sources": [{"page_start": 3, "page_end": 4}]},
-    {"question": "Momentum dùng để làm gì?", "answer": "Tăng tốc hội tụ.", "sources": [{"page_start": 5, "page_end": 5}]},
+    {"question": "Gradient descent là gì?", "answer": "Thuật toán tối ưu lặp.", "sources": [{"page_number": 3}, {"page_number": 4}]},
+    {"question": "Momentum dùng để làm gì?", "answer": "Tăng tốc hội tụ.", "sources": [{"page_number": 5}]},
 ]
 
 
@@ -56,7 +56,7 @@ class ObsidianExportTests(unittest.TestCase):
         self.assertIn("## Ý chính", content)
         self.assertIn("## Chi tiết câu hỏi & trả lời", content)
         self.assertIn("Gradient descent là gì?", content)
-        self.assertIn("tr.3-4", content)
+        self.assertIn("tr.3, 4", content)
 
     def test_empty_notes_raises(self) -> None:
         with self.assertRaises(ValueError):

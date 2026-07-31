@@ -31,7 +31,6 @@ async def retrieve_context(
     service: RAGService = Depends(get_rag_service),
 ) -> RetrieveResponse:
     sources = await service.retrieve(
-        user_id=request.user_id,
         slide_id=request.slide_id,
         question=request.question,
         top_k=request.top_k,
@@ -48,7 +47,6 @@ async def query_rag(
     service: RAGService = Depends(get_rag_service),
 ) -> RAGQueryResponse:
     answer, sources = await service.answer(
-        user_id=request.user_id,
         slide_id=request.slide_id,
         question=request.question,
         top_k=request.top_k,
@@ -65,7 +63,6 @@ async def summarize_slide(
     service: RAGService = Depends(get_rag_service),
 ) -> RAGQueryResponse:
     answer, sources = await service.summarize(
-        user_id=request.user_id,
         slide_id=request.slide_id,
     )
     return RAGQueryResponse(

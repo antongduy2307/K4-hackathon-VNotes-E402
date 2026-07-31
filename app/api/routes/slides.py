@@ -24,7 +24,6 @@ router = APIRouter(prefix="/slides", tags=["slides"])
 def _to_response(record: SlideRecord) -> SlideResponse:
     return SlideResponse(
         slide_id=record.slide_id,
-        user_id=record.user_id,
         title=record.title,
         original_filename=record.original_filename,
         status=record.status,
@@ -41,30 +40,27 @@ def _to_response(record: SlideRecord) -> SlideResponse:
 )
 async def upload_slide(
     file: Annotated[UploadFile, File(description="PDF hoặc PPTX")],
-    user_id: Annotated[str, Form(min_length=1, max_length=100)],
     title: Annotated[str | None, Form(max_length=200)] = None,
     service: IngestionService = Depends(get_ingestion_service),
 ) -> SlideUploadResponse:
-    record = await service.ingest(file=file, user_id=user_id, title=title)
+    record = await service.ingest(file=file, title=title)
     base = _to_response(record)
     return SlideUploadResponse(**base.model_dump(), message="Tạo RAG thành công")
 
 
 @router.get("", response_model=list[SlideResponse])
 def list_slides(
-    user_id: str,
     repository: SlideRepository = Depends(get_slide_repository),
 ) -> list[SlideResponse]:
-    return [_to_response(record) for record in repository.list_for_user(user_id)]
+    return [_to_response(record) for record in repository.list_all()]
 
 
 @router.get("/{slide_id}", response_model=SlideResponse)
 def get_slide(
     slide_id: str,
-    user_id: str,
     repository: SlideRepository = Depends(get_slide_repository),
 ) -> SlideResponse:
-    record = repository.get_owned(slide_id, user_id)
+    record = repository.get(slide_id)
     if record is None:
         raise SlideNotFoundError("Không tìm thấy slide")
     return _to_response(record)
@@ -73,16 +69,15 @@ def get_slide(
 @router.delete("/{slide_id}", response_model=DeleteSlideResponse)
 def delete_slide(
     slide_id: str,
-    user_id: str,
     repository: SlideRepository = Depends(get_slide_repository),
     chroma: ChromaService = Depends(get_chroma_service),
     file_service: FileService = Depends(get_file_service),
 ) -> DeleteSlideResponse:
-    record = repository.get_owned(slide_id, user_id)
+    record = repository.get(slide_id)
     if record is None:
         raise HTTPException(status_code=404, detail="Không tìm thấy slide")
 
-    chroma.delete_slide(user_id, slide_id)
-    deleted = repository.delete(slide_id, user_id)
+    chroma.delete_slide(slide_id)
+    deleted = repository.delete(slide_id)
     file_service.delete_slide_files(slide_id)
     return DeleteSlideResponse(slide_id=slide_id, deleted=deleted)

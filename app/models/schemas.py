@@ -7,7 +7,6 @@ from pydantic import BaseModel, Field
 
 class SlideResponse(BaseModel):
     slide_id: str
-    user_id: str
     title: str
     original_filename: str
     status: str
@@ -21,7 +20,6 @@ class SlideUploadResponse(SlideResponse):
 
 
 class RetrieveRequest(BaseModel):
-    user_id: str = Field(min_length=1, max_length=100)
     slide_id: str = Field(min_length=1, max_length=100)
     question: str = Field(default="", min_length=0, max_length=4000)
     top_k: int | None = Field(default=None, ge=1, le=50)

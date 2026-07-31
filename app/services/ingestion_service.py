@@ -37,7 +37,6 @@ class IngestionService:
         self,
         *,
         file: UploadFile,
-        user_id: str,
         title: str | None,
     ) -> SlideRecord:
         slide_id = str(uuid4())
@@ -47,7 +46,6 @@ class IngestionService:
 
         self.repository.create(
             slide_id=slide_id,
-            user_id=user_id,
             title=resolved_title,
             original_filename=original_filename,
             stored_path=stored_path,
@@ -57,24 +55,22 @@ class IngestionService:
             chunk_count = await to_thread.run_sync(
                 self._process_sync,
                 slide_id,
-                user_id,
                 original_filename,
                 stored_path,
             )
             self.repository.mark_ready(slide_id, chunk_count)
         except Exception as exc:
             self.repository.mark_failed(slide_id, str(exc))
-            self.chroma.delete_slide(user_id, slide_id)
+            self.chroma.delete_slide(slide_id)
             raise
 
-        record = self.repository.get_owned(slide_id, user_id)
+        record = self.repository.get(slide_id)
         assert record is not None
         return record
 
     def _process_sync(
         self,
         slide_id: str,
-        user_id: str,
         original_filename: str,
         stored_path: Path,
     ) -> int:
@@ -82,7 +78,6 @@ class IngestionService:
         chunks = self.chunker.chunk_pages(
             pages=pages,
             slide_id=slide_id,
-            user_id=user_id,
             source_filename=original_filename,
         )
         embeddings = self.embedder.encode([chunk.text for chunk in chunks])

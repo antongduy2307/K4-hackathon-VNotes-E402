@@ -8,7 +8,7 @@ Upload PDF/PPTX
   -> Chunking
   -> Sentence-Transformers embedding
   -> ChromaDB PersistentClient
-  -> Filter user_id + slide_id
+  -> Filter theo slide_id
   -> Retrieve Top-K
   -> LLM trả lời theo context
 ```
@@ -60,7 +60,6 @@ Lần chạy embedding đầu tiên sẽ tải model multilingual về máy.
 
 ```bash
 curl -X POST "http://localhost:8000/api/v1/slides/upload" \
-  -F "user_id=khoa" \
   -F "title=Machine Learning" \
   -F "file=@slides.pdf"
 ```
@@ -82,7 +81,6 @@ Output chính:
 curl -X POST "http://localhost:8000/api/v1/rag/retrieve" \
   -H "Content-Type: application/json" \
   -d '{
-    "user_id": "khoa",
     "slide_id": "SLIDE_ID",
     "question": "Gradient descent là gì?",
     "top_k": 5
@@ -97,7 +95,6 @@ curl -X POST "http://localhost:8000/api/v1/rag/retrieve" \
 curl -X POST "http://localhost:8000/api/v1/rag/query" \
   -H "Content-Type: application/json" \
   -d '{
-    "user_id": "khoa",
     "slide_id": "SLIDE_ID",
     "question": "Gradient descent là gì?",
     "top_k": 5
@@ -107,12 +104,11 @@ curl -X POST "http://localhost:8000/api/v1/rag/query" \
 ## 6. List và xóa slide
 
 ```bash
-curl "http://localhost:8000/api/v1/slides?user_id=khoa"
+curl "http://localhost:8000/api/v1/slides"
 ```
 
 ```bash
-curl -X DELETE \
-  "http://localhost:8000/api/v1/slides/SLIDE_ID?user_id=khoa"
+curl -X DELETE "http://localhost:8000/api/v1/slides/SLIDE_ID"
 ```
 
 ## 7. Test
@@ -126,5 +122,5 @@ pytest -q
 - ChromaDB được lưu tại `data/chroma`.
 - Metadata slide được lưu tại `data/slides.db`.
 - File gốc được lưu tại `data/uploads/<slide_id>`.
-- Query luôn lọc đồng thời `user_id` và `slide_id`.
+- Query luôn lọc theo `slide_id`.
 - PDF/PPTX dạng ảnh chưa có text sẽ cần thêm OCR.

@@ -10,9 +10,9 @@ side_effect: false
 ---
 # rag_query
 
-Calls the RAG backend's `POST /chat` with `{doc_id, question}` and returns a
-grounded answer plus source page ranges for the document open in this
-session.
+Calls the RAG backend's `POST /api/v1/rag/query` with `{slide_id, question}`
+and returns a grounded answer plus source chunks (each with a `page_number`)
+for the document open in this session.
 
 `doc_id` is fixed for the whole session (one document per session — it never
 changes mid-conversation) and is injected by the orchestrator

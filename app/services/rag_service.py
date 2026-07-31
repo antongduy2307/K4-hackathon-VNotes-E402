@@ -37,14 +37,13 @@ class RAGService:
     async def retrieve(
         self,
         *,
-        user_id: str,
         slide_id: str,
         question: str = "",
         top_k: int | None,
     ) -> list[RetrievedChunk]:
-        slide = self.repository.get_owned(slide_id, user_id)
+        slide = self.repository.get(slide_id)
         if slide is None:
-            raise SlideNotFoundError("Không tìm thấy slide của người dùng")
+            raise SlideNotFoundError("Không tìm thấy slide")
         if slide.status != "ready":
             raise SlideNotReadyError(f"Slide đang ở trạng thái: {slide.status}")
 
@@ -52,7 +51,6 @@ class RAGService:
             limit = min(top_k or self.default_top_k, self.max_top_k)
             return await to_thread.run_sync(
                 self._retrieve_with_question_sync,
-                user_id,
                 slide_id,
                 question,
                 limit,
@@ -61,7 +59,6 @@ class RAGService:
         limit = min(top_k or self.default_top_k, self.max_top_k)
         return await to_thread.run_sync(
             self._retrieve_sync,
-            user_id,
             slide_id,
             limit,
         )
@@ -69,43 +66,37 @@ class RAGService:
     async def retrieve_all_chunks(
         self,
         *,
-        user_id: str,
         slide_id: str,
     ) -> list[RetrievedChunk]:
-        slide = self.repository.get_owned(slide_id, user_id)
+        slide = self.repository.get(slide_id)
         if slide is None:
-            raise SlideNotFoundError("Không tìm thấy slide của người dùng")
+            raise SlideNotFoundError("Không tìm thấy slide")
         if slide.status != "ready":
             raise SlideNotReadyError(f"Slide đang ở trạng thái: {slide.status}")
 
         return await to_thread.run_sync(
             self._retrieve_all_chunks_sync,
-            user_id,
             slide_id,
         )
 
     def _retrieve_sync(
         self,
-        user_id: str,
         slide_id: str,
         top_k: int,
     ) -> list[RetrievedChunk]:
         return self.chroma.get_slide_chunks(
-            user_id=user_id,
             slide_id=slide_id,
             top_k=top_k,
         )
 
     def _retrieve_with_question_sync(
         self,
-        user_id: str,
         slide_id: str,
         question: str,
         top_k: int,
     ) -> list[RetrievedChunk]:
         query_embedding = self.embedder.encode([question])[0]
         return self.chroma.search(
-            user_id=user_id,
             slide_id=slide_id,
             query_embedding=query_embedding,
             top_k=top_k,
@@ -113,11 +104,9 @@ class RAGService:
 
     def _retrieve_all_chunks_sync(
         self,
-        user_id: str,
         slide_id: str,
     ) -> list[RetrievedChunk]:
         return self.chroma.get_slide_chunks(
-            user_id=user_id,
             slide_id=slide_id,
             top_k=None,
         )
@@ -125,21 +114,18 @@ class RAGService:
     async def answer(
         self,
         *,
-        user_id: str,
         slide_id: str,
         question: str = "",
         top_k: int | None = None,
     ) -> tuple[str, list[RetrievedChunk]]:
         if question and question.strip():
             sources = await self.retrieve(
-                user_id=user_id,
                 slide_id=slide_id,
                 question=question,
                 top_k=top_k,
             )
         else:
             sources = await self.retrieve_all_chunks(
-                user_id=user_id,
                 slide_id=slide_id,
             )
 
@@ -151,7 +137,6 @@ class RAGService:
                 self._answer_with_agent,
                 question or "Tóm tắt nội dung slide này bằng tiếng Việt, ngắn gọn, rõ ràng, có thể dùng cho học tập.",
                 sources,
-                user_id,
                 slide_id,
             )
         except Exception as e:
@@ -163,16 +148,14 @@ class RAGService:
     async def summarize(
         self,
         *,
-        user_id: str,
         slide_id: str,
     ) -> tuple[str, list[RetrievedChunk]]:
-        return await self.answer(user_id=user_id, slide_id=slide_id)
+        return await self.answer(slide_id=slide_id)
 
     def _answer_with_agent(
         self,
         question: str,
         sources: list[RetrievedChunk],
-        user_id: str,
         slide_id: str,
     ) -> str:
         import importlib.util
@@ -207,7 +190,7 @@ class RAGService:
                 "Không tự tạo dữ kiện. Khi sử dụng thông tin, ghi nguồn theo dạng [Trang X]."
             ),
             model="gpt-4o-mini",
-            session={"user_id": user_id, "slide_id": slide_id},
+            session={"slide_id": slide_id},
         )
 
         result = agent.run(

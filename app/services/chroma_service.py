@@ -35,7 +35,6 @@ class ChromaService:
             metadatas=[
                 {
                     "slide_id": chunk.slide_id,
-                    "user_id": chunk.user_id,
                     "page_number": chunk.page_number,
                     "chunk_index": chunk.chunk_index,
                     "source_filename": chunk.source_filename,
@@ -47,7 +46,6 @@ class ChromaService:
     def search(
         self,
         *,
-        user_id: str,
         slide_id: str,
         query_embedding: list[float],
         top_k: int,
@@ -55,12 +53,7 @@ class ChromaService:
         results = self.collection.query(
             query_embeddings=[query_embedding],
             n_results=top_k,
-            where={
-                "$and": [
-                    {"user_id": {"$eq": user_id}},
-                    {"slide_id": {"$eq": slide_id}},
-                ]
-            },
+            where={"slide_id": {"$eq": slide_id}},
             include=["documents", "metadatas", "distances"],
         )
 
@@ -90,17 +83,11 @@ class ChromaService:
     def get_slide_chunks(
         self,
         *,
-        user_id: str,
         slide_id: str,
         top_k: int | None,
     ) -> list[RetrievedChunk]:
         kwargs: dict[str, Any] = {
-            "where": {
-                "$and": [
-                    {"user_id": {"$eq": user_id}},
-                    {"slide_id": {"$eq": slide_id}},
-                ]
-            },
+            "where": {"slide_id": {"$eq": slide_id}},
             "include": ["documents", "metadatas"],
         }
         if top_k is not None:
@@ -108,9 +95,12 @@ class ChromaService:
 
         results = self.collection.get(**kwargs)
 
-        ids = self._first(results.get("ids"))
-        documents = self._first(results.get("documents"))
-        metadatas = self._first(results.get("metadatas"))
+        # collection.get() returns flat lists (one entry per matched chunk),
+        # unlike collection.query() which nests one list per query embedding —
+        # _first() unwraps that outer query-level nesting and must not be used here.
+        ids = results.get("ids") or []
+        documents = results.get("documents") or []
+        metadatas = results.get("metadatas") or []
 
         retrieved: list[RetrievedChunk] = []
         for chunk_id, document, metadata in zip(ids, documents, metadatas, strict=False):
@@ -127,15 +117,8 @@ class ChromaService:
             )
         return retrieved
 
-    def delete_slide(self, user_id: str, slide_id: str) -> None:
-        self.collection.delete(
-            where={
-                "$and": [
-                    {"user_id": {"$eq": user_id}},
-                    {"slide_id": {"$eq": slide_id}},
-                ]
-            }
-        )
+    def delete_slide(self, slide_id: str) -> None:
+        self.collection.delete(where={"slide_id": {"$eq": slide_id}})
 
     @staticmethod
     def _first(value: Any) -> list[Any]:

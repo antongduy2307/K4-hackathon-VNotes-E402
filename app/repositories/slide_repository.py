@@ -22,7 +22,6 @@ class SlideRepository:
                 """
                 CREATE TABLE IF NOT EXISTS slides (
                     slide_id TEXT PRIMARY KEY,
-                    user_id TEXT NOT NULL,
                     title TEXT NOT NULL,
                     original_filename TEXT NOT NULL,
                     stored_path TEXT NOT NULL,
@@ -33,15 +32,11 @@ class SlideRepository:
                 )
                 """
             )
-            connection.execute(
-                "CREATE INDEX IF NOT EXISTS idx_slides_user_id ON slides(user_id)"
-            )
 
     def create(
         self,
         *,
         slide_id: str,
-        user_id: str,
         title: str,
         original_filename: str,
         stored_path: Path,
@@ -51,13 +46,12 @@ class SlideRepository:
             connection.execute(
                 """
                 INSERT INTO slides (
-                    slide_id, user_id, title, original_filename, stored_path,
+                    slide_id, title, original_filename, stored_path,
                     status, chunk_count, created_at, error_message
-                ) VALUES (?, ?, ?, ?, ?, 'processing', 0, ?, NULL)
+                ) VALUES (?, ?, ?, ?, 'processing', 0, ?, NULL)
                 """,
                 (
                     slide_id,
-                    user_id,
                     title,
                     original_filename,
                     str(stored_path),
@@ -97,34 +91,18 @@ class SlideRepository:
             ).fetchone()
         return self._to_record(row) if row else None
 
-    def get_owned(self, slide_id: str, user_id: str) -> SlideRecord | None:
-        with self._connect() as connection:
-            row = connection.execute(
-                """
-                SELECT * FROM slides
-                WHERE slide_id = ? AND user_id = ?
-                """,
-                (slide_id, user_id),
-            ).fetchone()
-        return self._to_record(row) if row else None
-
-    def list_for_user(self, user_id: str) -> list[SlideRecord]:
+    def list_all(self) -> list[SlideRecord]:
         with self._connect() as connection:
             rows = connection.execute(
-                """
-                SELECT * FROM slides
-                WHERE user_id = ?
-                ORDER BY created_at DESC
-                """,
-                (user_id,),
+                "SELECT * FROM slides ORDER BY created_at DESC"
             ).fetchall()
         return [self._to_record(row) for row in rows]
 
-    def delete(self, slide_id: str, user_id: str) -> bool:
+    def delete(self, slide_id: str) -> bool:
         with self._connect() as connection:
             cursor = connection.execute(
-                "DELETE FROM slides WHERE slide_id = ? AND user_id = ?",
-                (slide_id, user_id),
+                "DELETE FROM slides WHERE slide_id = ?",
+                (slide_id,),
             )
         return cursor.rowcount > 0
 

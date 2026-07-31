@@ -37,13 +37,11 @@ def _deck_id_for(doc_id: str) -> int:
 def _format_back(note: dict[str, Any]) -> str:
     answer = str(note.get("answer") or "")
     sources = note.get("sources") or []
-    if not sources:
+    page_numbers = sorted({s["page_number"] for s in sources if "page_number" in s})
+    if not page_numbers:
         return answer
-    pages = ", ".join(
-        f"tr.{s['page_start']}" if s["page_start"] == s["page_end"] else f"tr.{s['page_start']}-{s['page_end']}"
-        for s in sources
-    )
-    return f"{answer}<br><br><i>Nguồn: {pages}</i>"
+    pages = ", ".join(str(p) for p in page_numbers)
+    return f"{answer}<br><br><i>Nguồn: tr.{pages}</i>"
 
 
 def build_anki_deck(notes: list[dict[str, Any]], *, doc_id: str, deck_name: str | None = None) -> genanki.Deck:
