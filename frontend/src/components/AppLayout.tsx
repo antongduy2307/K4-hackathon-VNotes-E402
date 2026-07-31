@@ -7,7 +7,7 @@ import { LeftSidebar } from "@/components/LeftSidebar";
 import { SlideViewer } from "@/components/SlideViewer";
 import { RightChatbot } from "@/components/RightChatbot";
 import { ResizeHandle } from "@/components/ResizeHandle";
-import { askChat, fetchSummary, uploadDocument } from "@/lib/api";
+import { askChat, fetchSummary, uploadSlide } from "@/lib/api";
 import {
   mockChatHistory,
   mockContentTree,
@@ -51,10 +51,10 @@ export function AppLayout() {
   async function handleUploadDocument(file: File) {
     setIsUploading(true);
     try {
-      const res = await uploadDocument(file);
-      setCourse((prev) => ({ ...prev, docId: res.doc_id, fileName: file.name }));
+      const res = await uploadSlide(file);
+      setCourse((prev) => ({ ...prev, docId: res.slide_id, fileName: file.name }));
       pushAssistantMessage(
-        `Đã nhập tài liệu "${file.name}" thành công (${res.chunks_stored} đoạn nội dung). Bạn có thể bắt đầu hỏi mình về nội dung này.`
+        `Đã nhập tài liệu "${file.name}" thành công (${res.chunk_count} đoạn nội dung). Bạn có thể bắt đầu hỏi mình về nội dung này.`
       );
     } catch {
       pushAssistantMessage("Không thể nhập tài liệu lúc này. Vui lòng thử lại sau.");
@@ -99,8 +99,8 @@ export function AppLayout() {
     setIsGenerating(true);
     try {
       const res = await fetchSummary(course.docId);
-      setQuickNote(res.summary);
-      pushAssistantMessage(`Tóm tắt slide ${currentSlide.label}: ${res.summary}`);
+      setQuickNote(res.answer);
+      pushAssistantMessage(`Tóm tắt slide ${currentSlide.label}: ${res.answer}`);
     } catch {
       const fallback = `${currentSlide.title}: ${currentSlide.bullets.join("; ")}`;
       setQuickNote(fallback);

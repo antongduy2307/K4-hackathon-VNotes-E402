@@ -1,48 +1,82 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const API_PREFIX = "/api/v1";
 
-export type IngestResponse = {
-  doc_id: string;
-  chunks_stored: number;
+export type SlideStatus = "processing" | "ready" | "failed";
+
+export type SlideResponse = {
+  slide_id: string;
+  title: string;
+  original_filename: string;
+  status: SlideStatus;
+  chunk_count: number;
+  created_at: string;
+  error_message: string | null;
 };
 
-export type SummaryResponse = {
-  doc_id: string;
-  summary: string;
+export type SlideUploadResponse = SlideResponse & { message: string };
+
+export type SourceChunk = {
+  chunk_id: string;
+  page_number: number;
+  chunk_index: number;
+  text: string;
+  score: number;
 };
 
-export type ChatSource = {
-  page_start: number;
-  page_end: number;
-};
-
-export type ChatResponse = {
+export type RagQueryResponse = {
+  slide_id: string;
   answer: string;
-  sources: ChatSource[];
+  sources: SourceChunk[];
 };
 
-export async function uploadDocument(file: File): Promise<IngestResponse> {
+async function parseJson<T>(res: Response, action: string): Promise<T> {
+  if (!res.ok) {
+    const detail = await res.json().catch(() => null);
+    throw new Error(`${action} failed: ${res.status}${detail?.detail ? ` — ${detail.detail}` : ""}`);
+  }
+  return res.json();
+}
+
+export async function uploadSlide(file: File, title?: string): Promise<SlideUploadResponse> {
   const form = new FormData();
   form.append("file", file);
-  const res = await fetch(`${API_BASE}/documents`, {
+  if (title) form.append("title", title);
+  const res = await fetch(`${API_BASE}${API_PREFIX}/slides/upload`, {
     method: "POST",
     body: form,
   });
-  if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
-  return res.json();
+  return parseJson(res, "Upload");
 }
 
-export async function fetchSummary(docId: string): Promise<SummaryResponse> {
-  const res = await fetch(`${API_BASE}/documents/${docId}/summary`);
-  if (!res.ok) throw new Error(`Summary failed: ${res.status}`);
-  return res.json();
+export async function listSlides(): Promise<SlideResponse[]> {
+  const res = await fetch(`${API_BASE}${API_PREFIX}/slides`);
+  return parseJson(res, "List slides");
 }
 
-export async function askChat(docId: string, question: string): Promise<ChatResponse> {
-  const res = await fetch(`${API_BASE}/chat`, {
+export async function getSlide(slideId: string): Promise<SlideResponse> {
+  const res = await fetch(`${API_BASE}${API_PREFIX}/slides/${slideId}`);
+  return parseJson(res, "Get slide");
+}
+
+export async function deleteSlide(slideId: string): Promise<{ slide_id: string; deleted: boolean }> {
+  const res = await fetch(`${API_BASE}${API_PREFIX}/slides/${slideId}`, { method: "DELETE" });
+  return parseJson(res, "Delete slide");
+}
+
+export async function fetchSummary(slideId: string): Promise<RagQueryResponse> {
+  const res = await fetch(`${API_BASE}${API_PREFIX}/rag/summarize`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ doc_id: docId, question }),
+    body: JSON.stringify({ slide_id: slideId }),
   });
-  if (!res.ok) throw new Error(`Chat failed: ${res.status}`);
-  return res.json();
+  return parseJson(res, "Summarize");
+}
+
+export async function askChat(slideId: string, question: string): Promise<RagQueryResponse> {
+  const res = await fetch(`${API_BASE}${API_PREFIX}/rag/query`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ slide_id: slideId, question }),
+  });
+  return parseJson(res, "Chat");
 }
