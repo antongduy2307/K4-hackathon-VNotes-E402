@@ -89,16 +89,7 @@ def get_slide_file(
         raise SlideNotFoundError("Không tìm thấy file slide trên server")
 
     media_type = _MEDIA_TYPES.get(record.stored_path.suffix.lower(), "application/octet-stream")
-    # FileResponse defaults Content-Disposition to "attachment" whenever filename
-    # is set, which tells browsers to force-download instead of rendering inline
-    # — wrong for a viewer endpoint. "inline" is what lets react-pdf/pdfjs (and a
-    # plain browser tab navigating here directly) display it instead.
-    return FileResponse(
-        record.stored_path,
-        media_type=media_type,
-        filename=record.original_filename,
-        content_disposition_type="inline",
-    )
+    return FileResponse(record.stored_path, media_type=media_type, filename=record.original_filename)
 
 
 @router.get("/{slide_id}/pages/{page_number}", response_model=PageTextResponse)
