@@ -103,7 +103,7 @@ Loại: [x] Tối ưu tính năng có sẵn &nbsp;&nbsp;[ ] Tính năng mới
 
 ## §8. Phân công & kế hoạch
 
-- **Phân công có tên:** [Điền tên] — evidence/mining (`analyze_chatlog.py`, `analyze_chatlog2.py`) · [Điền tên] — backend RAG (`ingestion.py`, `vectorstore.py`, `rag.py`, `agents.py`) · [Điền tên] — frontend (`SlideViewer`, `ChatPanel`, `SummaryDrawer`, `UploadModal`) · [Điền tên] — spec + chuẩn bị validation.
+- **Phân công có tên:** [Ngô Mạnh Minh Huy - 01926] — evidence/mining (`analyze_chatlog.py`, `analyze_chatlog2.py`) + frontend (`SlideViewer`, `ChatPanel`, `SummaryDrawer`, `UploadModal`). [Tống Duy An - 01995] — backend RAG (`ingestion.py`, `vectorstore.py`, `rag.py`, `agents.py`) · [Khoa - 01974] — spec + chuẩn bị validation.
 - **Willing users + kế hoạch validation:** Đã chạy khảo sát Google Form thật (n=24 cho câu hành vi, n=23 cho câu đánh giá ý tưởng, n=7 góp ý tin dùng, n=2 góp ý thêm — xem Evidence bổ sung ở §1). Đây đúng là "3 câu hành vi gần nhất trước, rồi mới hỏi ý kiến" như kế hoạch ban đầu, không phải chỉ hỏi cảm nhận suông. *Còn thiếu:* danh sách tên cụ thể ≥3 người đồng ý test trực tiếp bản Working (khảo sát hiện ẩn danh) — [Điền tên] trước giờ demo, ưu tiên mời trong số 7 người đã góp ý cụ thể vì họ đã thể hiện quan tâm sâu hơn mức trung bình.
 - **Multi-prototype:** Không làm — chỉ 1 phương án (multi-chunk synthesis qua RAG backend thật), vì đã có đủ bằng chứng đếm được (12,0%) để tự tin chọn ngay từ đầu, không cần so sánh song song nhiều hướng giải pháp.
 
